@@ -143,17 +143,6 @@ export default function SurveyComponent({ onSubmit }) {
       ),
     [],
   );
-  const summarySections = useMemo(
-    () =>
-      surveySections.map((section) => ({
-        id: section.id,
-        title: section.title,
-        insights: Array.from(
-          new Set(section.questions.map((question) => question.insight)),
-        ),
-      })),
-    [],
-  );
   const maxScore = useMemo(
     () =>
       flatQuestions.reduce(
@@ -256,15 +245,6 @@ export default function SurveyComponent({ onSubmit }) {
           </View>
         </View>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>영역 요약</Text>
-          {summarySections.map((section) => (
-            <View key={section.id} style={styles.summaryItem}>
-              <Text style={styles.summarySection}>{section.title}</Text>
-              <Text style={styles.summaryInsight}>{section.insights.join(' · ')}</Text>
-            </View>
-          ))}
-        </View>
       </View>
     </View>
   );
@@ -273,34 +253,6 @@ export default function SurveyComponent({ onSubmit }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  summaryCard: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  summaryTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1d4ed8',
-    marginBottom: 12,
-      
-  },
-  summaryItem: {
-    marginBottom: 12,
-  },
-  summarySection: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1d4ed8',
-    marginBottom: 4,
-  },
-  summaryInsight: {
-    fontSize: 15,
-    color: '#1f2937',
   },
   card: {
     flex: 1,
@@ -375,6 +327,9 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     borderRadius: 8,
     backgroundColor: 'white',
+    minHeight: 56,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   optionButtonText: {
     color: '#374151',
