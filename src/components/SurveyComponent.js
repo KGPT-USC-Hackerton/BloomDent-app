@@ -1,122 +1,270 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-const ANALYSIS_DELAY_MS = 2000;
+const surveySections = [
+  {
+    id: 'awareness',
+    title: '① 자기 인식 & 관찰 유도 (25점)',
+    questions: [
+      {
+        id: 'awareness_1',
+        prompt: '1. 오늘 양치할 때 잇몸색이나 입냄새 변화를 의식해본 적이 있나요?',
+        insight: '자기 인식 강화',
+        options: [
+          { label: '자주', score: 10 },
+          { label: '가끔', score: 5 },
+          { label: '없음', score: 0 },
+        ],
+      },
+      {
+        id: 'awareness_2',
+        prompt: '2. 혀의 색이나 표면 상태를 확인해본 적이 있나요?',
+        insight: '시각적 자기점검 습관',
+        options: [
+          { label: '매일', score: 10 },
+          { label: '가끔', score: 5 },
+          { label: '안 함', score: 0 },
+        ],
+      },
+      {
+        id: 'awareness_3',
+        prompt: '3. 양치 후 입안이 상쾌한지 스스로 느껴봤나요?',
+        insight: '감각 인식 훈련',
+        options: [
+          { label: '항상', score: 10 },
+          { label: '가끔', score: 5 },
+          { label: '아니오', score: 0 },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'habit',
+    title: '② 행동 습관 확인 & 인지 교정 (45점)',
+    questions: [
+      {
+        id: 'habit_1',
+        prompt: '4. 하루 2회 이상 양치를 실천했나요?',
+        insight: '빈도 중심 습관',
+        options: [
+          { label: '항상', score: 10 },
+          { label: '가끔', score: 5 },
+          { label: '거의 안 함', score: 0 },
+        ],
+      },
+      {
+        id: 'habit_2',
+        prompt: '5. 양치 시간은 평균 3분 이상이었나요?',
+        insight: '시간 인식 개선',
+        options: [
+          { label: '3분 이상', score: 10 },
+          { label: '1분 내외', score: 5 },
+          { label: '1분 미만', score: 0 },
+        ],
+      },
+      {
+        id: 'habit_3',
+        prompt: '6. 양치 시 치실, 치간칫솔, 워터픽 중 하나라도 사용했나요?',
+        insight: '보조도구 활용 인식',
+        options: [
+          { label: '매일', score: 10 },
+          { label: '주 2~3회', score: 5 },
+          { label: '안 함', score: 0 },
+        ],
+      },
+      {
+        id: 'habit_4',
+        prompt: '7. 간식이나 음료 섭취 후 입안을 물로 헹구거나 양치했나요?',
+        insight: '행동 직후 반응 습관',
+        options: [
+          { label: '항상', score: 10 },
+          { label: '가끔', score: 5 },
+          { label: '거의 안 함', score: 0 },
+        ],
+      },
+      {
+        id: 'habit_5',
+        prompt: '8. 칫솔은 최근 3개월 내 교체했나요?',
+        insight: '위생 인식 유지',
+        options: [
+          { label: '예', score: 5 },
+          { label: '아니오', score: 0 },
+        ],
+      },
+    ],
+  },
+  {
+    id: 'prevention',
+    title: '③ 디지털 연결 + 예방적 행동 강조 (30점)',
+    questions: [
+      {
+        id: 'prevention_1',
+        prompt: '9. 오늘 BloomDent 설문을 완료했거나 구강관리 점수를 확인했나요?',
+        insight: '디지털 습관 유도',
+        options: [
+          { label: '예', score: 10 },
+          { label: '기억 안 남', score: 5 },
+          { label: '아니오', score: 0 },
+        ],
+      },
+      {
+        id: 'prevention_2',
+        prompt: '10. 최근 구강관리 관련 콘텐츠(영상·가이드)를 확인했나요?',
+        insight: '정보 접근 강화',
+        options: [
+          { label: '예', score: 10 },
+          { label: '가끔', score: 5 },
+          { label: '아니오', score: 0 },
+        ],
+      },
+      {
+        id: 'prevention_3',
+        prompt: '11. 구강건강을 위해 물 섭취를 의식적으로 늘렸나요?',
+        insight: '생활 습관 개선',
+        options: [
+          { label: '충분히 함', score: 10 },
+          { label: '노력 중', score: 5 },
+          { label: '신경 안 씀', score: 0 },
+        ],
+      },
+    ],
+  },
+];
 
-const mockAnalysisResult = {
-  score: 82,
-  issues: [
-    { type: 'warning', text: '치석이 약간 보입니다' },
-    { type: 'good', text: '잇몸 상태가 양호합니다' },
-    { type: 'info', text: '정기 검진을 권장합니다' },
-  ],
-  recommendations: [
-    '하루 2회 이상 양치질',
-    '치실 사용 권장',
-    '정기 스케일링 (6개월마다)',
-  ],
-};
+export default function SurveyComponent({ onSubmit }) {
+  const flatQuestions = useMemo(
+    () =>
+      surveySections.flatMap((section) =>
+        section.questions.map((question) => ({
+          ...question,
+          sectionId: section.id,
+          sectionTitle: section.title,
+        })),
+      ),
+    [],
+  );
+  const summarySections = useMemo(
+    () =>
+      surveySections.map((section) => ({
+        id: section.id,
+        title: section.title,
+        insights: Array.from(
+          new Set(section.questions.map((question) => question.insight)),
+        ),
+      })),
+    [],
+  );
+  const maxScore = useMemo(
+    () =>
+      flatQuestions.reduce(
+        (total, question) =>
+          total +
+          Math.max(
+            ...question.options.map((option) => option.score),
+          ),
+        0,
+      ),
+    [flatQuestions],
+  );
 
-export default function SurveyComponent({ onBack }) {
-  const [selectedFile, setSelectedFile] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const timeoutRef = useRef(null);
+  const [step, setStep] = useState(0);
+  const [responses, setResponses] = useState({});
 
-  const resetState = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
+  const currentQuestion = flatQuestions[step];
+  const progressText = `${step + 1} / ${flatQuestions.length}`;
+  const progressRatio = ((step + 1) / flatQuestions.length) * 100;
+
+  const handleSelectOption = (option) => {
+    const nextResponses = {
+      ...responses,
+      [currentQuestion.id]: {
+        answer: option.label,
+        score: option.score,
+        sectionId: currentQuestion.sectionId,
+        sectionTitle: currentQuestion.sectionTitle,
+      },
+    };
+    const isLastStep = step === flatQuestions.length - 1;
+
+    if (isLastStep) {
+      const rawScore = Object.values(nextResponses).reduce(
+        (sum, response) => sum + response.score,
+        0,
+      );
+      const categoryScores = Object.values(nextResponses).reduce(
+        (acc, response) => {
+          if (!acc[response.sectionId]) {
+            acc[response.sectionId] = {
+              title: response.sectionTitle,
+              score: 0,
+            };
+          }
+          acc[response.sectionId].score += response.score;
+          return acc;
+        },
+        {},
+      );
+      const normalizedScore = Math.round((rawScore / maxScore) * 100);
+
+      onSubmit?.({
+        responses: nextResponses,
+        rawScore,
+        normalizedScore,
+        categoryScores,
+        maxScore,
+      });
+
+      setStep(0);
+      setResponses({});
+      return;
     }
-    setSelectedFile(false);
-    setAnalysisResult(null);
-    setIsAnalyzing(false);
-  }, []);
 
-  const handleBack = useCallback(() => {
-    resetState();
-    onBack?.();
-  }, [onBack, resetState]);
-
-  const handleFileUpload = useCallback(() => {
-    resetState();
-    setSelectedFile(true);
-    setIsAnalyzing(true);
-
-    timeoutRef.current = setTimeout(() => {
-      setAnalysisResult(mockAnalysisResult);
-      setIsAnalyzing(false);
-      timeoutRef.current = null;
-    }, ANALYSIS_DELAY_MS);
-  }, [resetState]);
-
-  useEffect(() => () => resetState(), [resetState]);
+    setResponses(nextResponses);
+    setStep((prev) => prev + 1);
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Text style={styles.backButtonText}>← 뒤로</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>구강 사진 분석</Text>
-      </View>
-
       <View style={styles.card}>
-        {!selectedFile ? (
-          <View style={styles.photoUploadSection}>
-            <View style={styles.cameraIcon}>
-              <Text style={styles.cameraIconText}>📷</Text>
-            </View>
-            <Text style={styles.photoTitle}>구강 사진을 촬영해주세요</Text>
-            <Text style={styles.photoSubtext}>
-              AI가 사진을 분석하여 구강 건강 상태를 알려드립니다
-            </Text>
-            <TouchableOpacity onPress={handleFileUpload} style={styles.uploadButton}>
-              <Text style={styles.uploadButtonText}>📤 사진 촬영하기</Text>
-            </TouchableOpacity>
+        <View style={styles.progressSection}>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${progressRatio}%` }]} />
           </View>
-        ) : (
-          <View style={styles.analysisSection}>
-            <View style={styles.photoPreview}>
-              <Text style={styles.photoPreviewText}>촬영된 사진</Text>
+          <Text style={styles.progressText}>{progressText}</Text>
+        </View>
+
+        <View style={styles.questionCard}>
+          <View style={styles.questionHeader}>
+            <Text style={styles.sectionTag}>{currentQuestion.sectionTitle}</Text>
+            <View style={styles.questionIcon}>
+              <Text style={styles.questionIconText}>📝</Text>
             </View>
-            {isAnalyzing ? (
-              <View style={styles.loadingSection}>
-                <Text style={styles.loadingText}>AI 분석 중...</Text>
-              </View>
-            ) : (
-              analysisResult && (
-                <View style={styles.resultSection}>
-                  <View style={styles.scoreSection}>
-                    <Text style={styles.scoreNumber}>{analysisResult.score}</Text>
-                    <Text style={styles.scoreLabel}>구강 건강 점수</Text>
-                  </View>
-
-                  <View style={styles.issuesSection}>
-                    {analysisResult.issues.map((issue, index) => (
-                      <View key={index} style={styles.issueItem}>
-                        <Text style={styles.issueIcon}>
-                          {issue.type === 'good' ? '✅' : issue.type === 'warning' ? '⚠️' : 'ℹ️'}
-                        </Text>
-                        <Text style={styles.issueText}>{issue.text}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                    <View style={styles.recommendationsSection}>
-                      <Text style={styles.recommendationsTitle}>추천 사항</Text>
-                      {analysisResult.recommendations.map((rec, index) => (
-                        <View key={index} style={styles.recommendationItem}>
-                          <Text style={styles.bullet}>•</Text>
-                          <Text style={styles.recommendationText}>{rec}</Text>
-                        </View>
-                      ))}
-                    </View>
-                </View>
-              )
-            )}
+            <Text style={styles.questionTitle}>{currentQuestion.prompt}</Text>
+            <Text style={styles.questionText}>{currentQuestion.insight}</Text>
           </View>
-        )}
+
+          <View style={styles.optionsContainer}>
+            {currentQuestion.options.map((option) => (
+              <TouchableOpacity
+                key={option.label}
+                onPress={() => handleSelectOption(option)}
+                style={styles.optionButton}
+              >
+                <Text style={styles.optionButtonText}>{option.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>영역 요약</Text>
+          {summarySections.map((section) => (
+            <View key={section.id} style={styles.summaryItem}>
+              <Text style={styles.summarySection}>{section.title}</Text>
+              <Text style={styles.summaryInsight}>{section.insights.join(' · ')}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -125,151 +273,112 @@ export default function SurveyComponent({ onBack }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  summaryCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
     padding: 16,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
   },
-  backButton: {
-    padding: 8,
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1d4ed8',
+    marginBottom: 12,
+      
   },
-  backButtonText: {
-    color: '#6b7280',
-    fontSize: 16,
+  summaryItem: {
+    marginBottom: 12,
   },
-  headerTitle: {
+  summarySection: {
     fontSize: 18,
-    color: '#374151',
-    marginLeft: 8,
     fontWeight: '600',
+    color: '#1d4ed8',
+    marginBottom: 4,
+  },
+  summaryInsight: {
+    fontSize: 15,
+    color: '#1f2937',
   },
   card: {
-    margin: 16,
-    padding: 24,
+    flex: 1,
     backgroundColor: 'white',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    paddingVertical: 20,
+    paddingHorizontal: 24,
   },
-  photoUploadSection: {
+  progressSection: {
+    marginBottom: 20,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 4,
+  },
+  progressFill: {
+    height: 8,
+    backgroundColor: '#3b82f6',
+    borderRadius: 4,
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 8,
+  },
+  questionCard: {
+    flex: 1,
+    marginBottom: 20,
+    
+  },
+  questionHeader: {
     alignItems: 'center',
+    marginBottom: 24,
   },
-  cameraIcon: {
-    width: 80,
-    height: 80,
-    backgroundColor: '#dbeafe',
-    borderRadius: 40,
+  sectionTag: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#2563eb',
+    marginBottom: 8,
+  },
+  questionIcon: {
+    width: 64,
+    height: 64,
+    backgroundColor: '#dcfce7',
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-  cameraIconText: {
-    fontSize: 40,
+  questionIconText: {
+    fontSize: 32,
   },
-  photoTitle: {
+  questionTitle: {
     color: '#374151',
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 8,
   },
-  photoSubtext: {
+  questionText: {
     color: '#6b7280',
     textAlign: 'center',
-    marginBottom: 24,
   },
-  uploadButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
+  optionsContainer: {
+    gap: 12,
+  },
+  optionButton: {
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     borderRadius: 8,
+    backgroundColor: 'white',
   },
-  uploadButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  analysisSection: {
-    gap: 16,
-  },
-  photoPreview: {
-    height: 140,
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoPreviewText: {
-    color: '#6b7280',
-  },
-  loadingSection: {
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#3b82f6',
-  },
-  resultSection: {
-    gap: 16,
-  },
-  scoreSection: {
-    alignItems: 'center',
-  },
-  scoreNumber: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: '#2563eb',
-  },
-  scoreLabel: {
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  issuesSection: {
-    gap: 8,
-  },
-  issueItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    padding: 12,
-    borderRadius: 8,
-  },
-  issueIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  issueText: {
-    fontSize: 14,
-    color: '#374151',
-    flex: 1,
-  },
-  recommendationsSection: {
-    marginTop: 16,
-  },
-  recommendationsTitle: {
+  optionButtonText: {
     color: '#374151',
     fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  recommendationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  bullet: {
-    color: '#3b82f6',
-    marginRight: 8,
-  },
-  recommendationText: {
-    fontSize: 14,
-    color: '#6b7280',
-    flex: 1,
+    textAlign: 'center',
   },
 });
