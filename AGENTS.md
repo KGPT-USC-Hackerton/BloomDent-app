@@ -1,33 +1,36 @@
 # Repository Guidelines
 
+This guide summarizes the expectations for contributors working in the BloomDent React Native app.
+
 ## Project Structure & Module Organization
-- `src/` holds all React Native code. Top-level navigation lives in `src/App.js`, shared UI resides in `src/components/`, and feature pages (예: `CareScreen.js`) live in `src/screens/`.
-- Tests reside in `__tests__/` and mirror component names (예: `App.test.tsx`). Keep new suites here to simplify Jest discovery.
-- Native shells stay in `ios/` and `android/`; open the workspace via `ios/BloomDent.xcworkspace` for Xcode and `android/` in Android Studio.
-- Ruby dependencies are vendored under `vendor/bundle/`; keep updates scoped to iOS changes.
-- Tooling configs (`babel.config.js`, `metro.config.js`, `jest.config.js`) remain at the repository root—update them cautiously and document changes.
+- `src/` contains all JS code; navigation starts in `src/App.js`, shared UI lives in `src/components/`, and feature screens sit in `src/screens/`.
+- Tests mirror components in `__tests__/` (예: `__tests__/App.test.tsx`); keep names aligned so Jest picks them up automatically.
+- Native shells stay in `ios/` and `android/`; open `ios/BloomDent.xcworkspace` for Xcode and the `android/` folder for Android Studio.
+- Vendored Ruby gems reside in `vendor/bundle/`; only touch them when updating iOS dependencies. Tooling configs (`babel.config.js`, `metro.config.js`, `jest.config.js`) live at the repo root.
 
 ## Build, Test, and Development Commands
-- `npm start` — boots the Metro bundler; keep this running during local work.
-- `npm run ios` / `npm run android` — launches the app on a simulator or attached device (Metro must be active).
-- `bundle exec pod install` (from `ios/`) — syncs CocoaPods after dependency changes.
-- `npm run lint` — runs ESLint using the shared React Native config.
-- `npm test` — executes the Jest suite with React Test Renderer integration.
+- `npm start` boots Metro; leave it running while iterating.
+- `npm run ios` / `npm run android` launches the app in a simulator or attached device.
+- From `ios/`, run `bundle exec pod install` after native dependency changes.
+- `npm run lint` applies the shared ESLint rules; `npm test` executes the Jest suite.
 
 ## Coding Style & Naming Conventions
-- Follow ESLint + Prettier defaults: 2-space indent, single quotes, dangling commas disabled, semicolons enabled.
-- Components, hooks, and providers use PascalCase file names (`SurveyComponent.js`); utilities remain camelCase.
-- Centralize reusable UI in `src/components/` to avoid bulky screen files; keep styles co-located via `StyleSheet.create`.
-- Prefer TypeScript for new tests (`*.test.tsx`), while application code stays in JavaScript unless migration is planned.
+- Follow ESLint + Prettier defaults: 2-space indent, single quotes, semicolons on, no trailing commas.
+- Components, hooks, and providers use PascalCase (`SurveyComponent.js`); utilities stay camelCase.
+- Co-locate styles via `StyleSheet.create` next to each component, and move reusable UI into `src/components/`.
+- Write new tests in TypeScript (`*.test.tsx`); app code remains in JavaScript unless migration plans change.
 
 ## Testing Guidelines
-- Use Jest for unit and snapshot coverage; run `npm test` before raising a PR.
-- Mirror source names in `__tests__/` and group related expectations inside `describe` blocks for clarity.
-- When updating UI states (예: 설문 점수 계산), add regression tests that capture expected values or rendered branches.
-- Flag flaky tests in the PR description and include reproduction steps if they touch native layers.
+- Use Jest for unit and snapshot coverage; run `npm test` before every PR.
+- Organize assertions inside descriptive `describe` blocks and mirror source file names under `__tests__/`.
+- Add regression cases when altering UI or state calculations (예: 설문 점수 계산) and document any flaky scenarios in the PR.
 
 ## Commit & Pull Request Guidelines
-- Match the existing Conventional Commit style (`type: summary`), keeping the summary in Korean 또는 English present tense (예: `chore: ios pod update`).
-- Reference issue IDs or ticket codes in the body when applicable; note native-side steps such as `pod install`.
-- PRs should outline the change scope, include screenshots or screen recordings for UI updates, and list manual/automated test evidence.
-- Request design/Product 리뷰 when adjusting copy or layout, and note any follow-up tasks in the PR checklist.
+- Follow Conventional Commits (`type: summary`) in Korean 또는 English present tense, e.g., `chore: ios pod update`.
+- Reference related tickets in the commit body and note any required native follow-up such as `pod install`.
+- PRs should outline scope, include screenshots or recordings for UI tweaks, and list manual or automated test evidence.
+- Request design/Product 리뷰 before merging copy or layout updates and capture follow-up TODOs in the PR checklist.
+
+## Configuration & Environment Tips
+- Keep `.env` values out of source control; use the shared secure store when provisioning devices.
+- After pulling large dependency changes, clear Metro caches with `npm start -- --reset-cache` to avoid stale bundles.

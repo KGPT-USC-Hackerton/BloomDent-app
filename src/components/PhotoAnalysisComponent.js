@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
 const ANALYSIS_DELAY_MS = 2000;
 
@@ -18,25 +19,30 @@ const mockAnalysisResult = {
 };
 
 export default function PhotoAnalysisComponent({ onReset }) {
-  const [selectedFile, setSelectedFile] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [pickerError, setPickerError] = useState(null);
   const timeoutRef = useRef(null);
 
-  const resetState = useCallback(() => {
+  const clearAnalysisTimeout = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    setSelectedFile(false);
+  }, []);
+
+  const resetState = useCallback(() => {
+    clearAnalysisTimeout();
+    setSelectedAsset(null);
     setAnalysisResult(null);
     setIsAnalyzing(false);
+    setPickerError(null);
     onReset?.();
-  }, [onReset]);
+  }, [clearAnalysisTimeout, onReset]);
 
-  const handleFileUpload = useCallback(() => {
-    resetState();
-    setSelectedFile(true);
+  const runMockAnalysis = useCallback(() => {
+    setAnalysisResult(null);
     setIsAnalyzing(true);
 
     timeoutRef.current = setTimeout(() => {
@@ -44,14 +50,73 @@ export default function PhotoAnalysisComponent({ onReset }) {
       setIsAnalyzing(false);
       timeoutRef.current = null;
     }, ANALYSIS_DELAY_MS);
-  }, [resetState]);
+  }, []);
+
+  const handlePickerResult = useCallback(
+    response => {
+      if (!response || response.didCancel) {
+        return;
+      }
+
+      if (response.errorCode) {
+        setPickerError(
+          response.errorMessage || '사진을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.'
+        );
+        return;
+      }
+
+      const asset = response.assets?.[0];
+
+      if (!asset?.uri) {
+        setPickerError('선택한 사진의 경로를 확인할 수 없습니다.');
+        return;
+      }
+
+      clearAnalysisTimeout();
+      setPickerError(null);
+      setSelectedAsset(asset);
+      runMockAnalysis();
+    },
+    [clearAnalysisTimeout, runMockAnalysis]
+  );
+
+  const handleLaunch = useCallback(
+    async type => {
+      const options = {
+        mediaType: 'photo',
+        quality: 0.8,
+        cameraType: 'back',
+        saveToPhotos: type === 'camera',
+      };
+
+      try {
+        const response =
+          type === 'camera'
+            ? await launchCamera(options)
+            : await launchImageLibrary(options);
+
+        handlePickerResult(response);
+      } catch (error) {
+        setPickerError('사진을 불러오는 중 오류가 발생했습니다. 다시 시도해주세요.');
+      }
+    },
+    [handlePickerResult]
+  );
+
+  const handleUploadPress = useCallback(() => {
+    Alert.alert('사진 선택', '사진을 촬영하거나 앨범에서 선택해주세요.', [
+      { text: '앨범에서 선택', onPress: () => handleLaunch('library') },
+      { text: '카메라로 촬영', onPress: () => handleLaunch('camera') },
+      { text: '취소', style: 'cancel' },
+    ]);
+  }, [handleLaunch]);
 
   useEffect(() => () => resetState(), [resetState]);
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        {!selectedFile ? (
+        {!selectedAsset ? (
           <View style={styles.photoUploadSection}>
             <View style={styles.cameraIcon}>
               <Text style={styles.cameraIconText}>📷</Text>
@@ -60,14 +125,19 @@ export default function PhotoAnalysisComponent({ onReset }) {
             <Text style={styles.photoSubtext}>
               AI가 사진을 분석하여 구강 건강 상태를 알려드립니다
             </Text>
-            <TouchableOpacity onPress={handleFileUpload} style={styles.uploadButton}>
+            <TouchableOpacity onPress={handleUploadPress} style={styles.uploadButton}>
               <Text style={styles.uploadButtonText}>📤 사진 촬영하기</Text>
             </TouchableOpacity>
+            {pickerError ? <Text style={styles.errorText}>{pickerError}</Text> : null}
           </View>
         ) : (
           <View style={styles.analysisSection}>
             <View style={styles.photoPreview}>
-              <Text style={styles.photoPreviewText}>촬영된 사진</Text>
+              {selectedAsset?.uri ? (
+                <Image source={{ uri: selectedAsset.uri }} style={styles.photoPreviewImage} />
+              ) : (
+                <Text style={styles.photoPreviewText}>촬영된 사진</Text>
+              )}
             </View>
             {isAnalyzing ? (
               <View style={styles.loadingSection}>
@@ -164,6 +234,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  errorText: {
+    marginTop: 12,
+    color: '#ef4444',
+  },
   analysisSection: {
     gap: 16,
   },
@@ -173,9 +247,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   photoPreviewText: {
     color: '#6b7280',
+  },
+  photoPreviewImage: {
+    width: '100%',
+    height: '100%',
   },
   loadingSection: {
     height: 120,
