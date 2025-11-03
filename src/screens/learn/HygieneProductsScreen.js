@@ -45,7 +45,7 @@ const PRODUCTS = [
     id: 'interdental',
     title: '🪥 치간칫솔',
     img: 'https://images.unsplash.com/photo-1600423115367-5c7b3d5d7d3c?q=80&w=1080&auto=format&fit=crop',
-    desc: '칫솔이 닿지 않는 넓은 치간에 유용. 교정 중/임플란트 주변 관리에 도움.',
+    desc: '칫솔이 닿지 않는 넓은 치간에 유용.',
     steps: [
       {
         id: '1',
@@ -81,7 +81,7 @@ const PRODUCTS = [
     id: 'mouthwash',
     title: '🧴 가글(구강양치용액)',
     img: 'https://images.unsplash.com/photo-1623855244082-8b4d5b38f3a1?q=80&w=1080&auto=format&fit=crop',
-    desc: '세균 억제·구취 완화에 도움. 칫솔질 대체용이 아니라 보조용.',
+    desc: '세균 억제·구취 완화에 도움.',
     steps: [
       {
         id: '1',

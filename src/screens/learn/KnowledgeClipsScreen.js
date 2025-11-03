@@ -1,90 +1,69 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList } from 'react-native';
 import Video from 'react-native-video';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const DATA = [
-  {
-    id: '1',
-    type: 'video',
-    title: '설탕 음료와 충치의 관계',
-    url: 'https://www.w3schools.com/html/mov_bbb.mp4',
-  },
-  {
-    id: '2',
-    type: 'card',
-    title: '불소의 역할',
-    points: ['치아 표면 강화', '충치균 억제', '재광화 촉진'],
-  },
-  {
-    id: '3',
-    type: 'video',
-    title: '칫솔 교체 주기',
-    url: 'https://www.w3schools.com/html/movie.mp4',
-  },
+  { id: '1', title: '입속 세균과 질병의 관계', url: 'https://res.cloudinary.com/dqutwk5xo/video/upload/v1762187462/%EC%98%81%EC%83%811_ocbplz.mp4' },
+  { id: '2', title: '노인에게 발생되는 구강건조증 예방을 위한 침샘 마사지',               url: 'https://res.cloudinary.com/dqutwk5xo/video/upload/v1762187832/%EC%98%81%EC%83%812_lzituo.mp4' },
+  { id: '3', title: '올바른 칫솔질 방법',             url: 'https://res.cloudinary.com/dqutwk5xo/video/upload/v1762187854/%EC%98%81%EC%83%814_kz9fwg.mp4' },
+  { id: '4', title: '칫솔 선택 및 보관법',               url: 'https://res.cloudinary.com/dqutwk5xo/video/upload/v1762187843/%EC%98%81%EC%83%813_wxbu5t.mp4' },
 ];
 
-function ClipVideo({ title, url }) {
-  const [paused, setPaused] = useState(true);
-  const player = useRef(null);
-  const [progress, setProgress] = useState(0);
-
-  return (
-    <Pressable onPress={() => setPaused(!paused)} style={styles.cardVideo}>
-      <Text style={styles.h2}>{title}</Text>
-      <Video
-        ref={player}
-        source={{ uri: url }}
-        style={styles.video}
-        paused={paused}
-        resizeMode="cover"
-        onProgress={p => {
-          const ratio = Math.min(p.currentTime / 15, 1);
-          setProgress(ratio);
-          if (p.currentTime >= 15) setPaused(true);
-        }}
-      />
-      <View style={styles.progressWrap}>
-        <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
-      </View>
-      <Text style={styles.helper}>{paused ? '▶ 탭하여 재생' : '⏸ 일시정지'}</Text>
-    </Pressable>
-  );
-}
-
-function ClipCard({ title, points }) {
+function ClipCard({ title, url, playing, isVertical }) {
   return (
     <View style={styles.card}>
-      <Text style={styles.h2}>{title}</Text>
-      {points.map((p, i) => (
-        <Text key={i} style={styles.li}>• {p}</Text>
-      ))}
+      <Text style={styles.title}>{title}</Text>
+      <View style={styles.videoWrap}>
+        <Video
+          source={{ uri: url }}
+          style={isVertical ? styles.videoVertical : styles.video}
+          resizeMode="cover"
+          paused={!playing}       // 보일 때만 재생
+          muted                   // 자동재생을 위해 무음
+          repeat
+          controls={false}
+          playInBackground={false}
+          playWhenInactive={false}
+          ignoreSilentSwitch="ignore"
+        />
+      </View>
     </View>
   );
 }
 
 export default function KnowledgeClipsScreen() {
-  const renderItem = ({ item }) =>
-    item.type === 'video'
-      ? <ClipVideo title={item.title} url={item.url} />
-      : <ClipCard title={item.title} points={item.points} />;
+  const [visibleIds, setVisibleIds] = useState([]);
+
+  // ✅ useRef로 핸들러 고정 (nullability 에러 방지)
+  const onViewRef = useRef(({ viewableItems }) => {
+    setVisibleIds(viewableItems.map(v => v.item.id));
+  });
+  const viewConfigRef = useRef({ itemVisiblePercentThreshold: 80 });
+
+  const renderItem = ({ item }) => {
+    const playing = visibleIds.includes(item.id);
+    const isVertical = item.id === '2'; // ✅ 2번째 영상만 세로형 (9:16)
+    return <ClipCard title={item.title} url={item.url} playing={playing} isVertical={isVertical} />;
+  };
 
   return (
     <FlatList
       data={DATA}
       keyExtractor={i => i.id}
       renderItem={renderItem}
-      contentContainerStyle={{ padding: 16, backgroundColor: '#F8FAFC', gap: 12 }}
+      contentContainerStyle={styles.list}
+      ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+      onViewableItemsChanged={onViewRef.current}
+      viewabilityConfig={viewConfigRef.current}
+      removeClippedSubviews
     />
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
-  h2: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 6 },
-  li: { fontSize: 14, color: '#374151', lineHeight: 22 },
-  cardVideo: {
-    backgroundColor: '#EEF2FF',
+  list: { padding: 16, backgroundColor: '#F8FAFC' },
+  card: {
+    backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 12,
     shadowColor: '#000',
@@ -92,8 +71,10 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
-  video: { height: 200, borderRadius: 10, backgroundColor: '#000' },
-  progressWrap: { height: 6, backgroundColor: '#E5E7EB', borderRadius: 99, marginTop: 8 },
-  progressBar: { height: '100%', backgroundColor: '#2563EB' },
-  helper: { fontSize: 12, color: '#64748B', marginTop: 6 },
+  title: { fontSize: 16, fontWeight: '700', color: '#0F172A', marginBottom: 8 },
+  videoWrap: { overflow: 'hidden', borderRadius: 12, backgroundColor: '#000' },
+  // ✅ 기본 (가로형 16:9)
+  video: { width: '100%', aspectRatio: 16 / 9 },
+  // ✅ 2번만 세로형 (9:16)
+  videoVertical: { width: '100%', aspectRatio: 9 / 16 },
 });
