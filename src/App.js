@@ -8,7 +8,7 @@ import HomeScreen from './screens/HomeScreen';
 import CareScreen from './screens/CareScreen';
 import AppointmentScreen from './screens/AppointmentScreen';
 import MyPageScreen from './screens/MyPageScreen';
-import LearnScreen from './screens/LearnScreen';
+import LearnScreen from './screens/LearnScreen'; // ✅ 수정
 
 const Tab = createBottomTabNavigator();
 
@@ -33,11 +33,10 @@ function App() {
               ),
             }}
           />
-
-          {/* 학습 탭 */}
+          
           <Tab.Screen
             name="Learn"
-            component={LearnScreen}
+            component={LearnScreen} // ✅ LearnNavigator → LearnScreen
             options={{
               title: '학습',
               tabBarIcon: ({ color, size }) => (
