@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, StyleSheet, SafeAreaView } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -8,41 +8,11 @@ import HomeScreen from './screens/HomeScreen';
 import CareScreen from './screens/CareScreen';
 import AppointmentScreen from './screens/AppointmentScreen';
 import MyPageScreen from './screens/MyPageScreen';
-import LoginScreen from './screens/LoginScreen';
-import SurveyScreen from './screens/SurveyScreen';
-import LearnScreen from './screens/LearnScreen';
+import LearnScreen from './screens/LearnScreen'; // ✅ 수정
 
 const Tab = createBottomTabNavigator();
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [surveyCompleted, setSurveyCompleted] = useState(false);
-
-  // 앱 시작 시 설문 완료 여부 확인 (AsyncStorage 대신 간단하게 localStorage 사용)
-  useEffect(() => {
-    // React Native에서는 AsyncStorage를 사용해야 하지만, 
-    // 여기서는 간단한 state로 관리 (웹에서는 localStorage 사용)
-  }, []);
-
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    // 로그인 후 설문 완료 여부 확인은 SurveyScreen에서 처리
-  };
-
-  const handleSurveyComplete = (answers) => {
-    // 설문 답변 저장 (실제로는 서버에 전송하거나 저장)
-    console.log('Survey answers:', answers);
-    setSurveyCompleted(true);
-  };
-
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={handleLogin} />;
-  }
-
-  if (!surveyCompleted) {
-    return <SurveyScreen onComplete={handleSurveyComplete} />;
-  }
-
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.topSafeArea} />
