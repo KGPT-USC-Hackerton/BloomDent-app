@@ -9,7 +9,7 @@ import CareScreen from './screens/CareScreen';
 import AppointmentScreen from './screens/AppointmentScreen';
 import MyPageScreen from './screens/MyPageScreen';
 import LoginScreen from './screens/LoginScreen';
-import SurveyScreen from './screens/SurveyScreen';
+import SurveyScreen from './screens/Start_SurveyScreen';
 import LearnScreen from './screens/LearnScreen';
 
 const Tab = createBottomTabNavigator();

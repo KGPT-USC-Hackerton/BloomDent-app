@@ -496,4 +496,3 @@ const styles = StyleSheet.create({
 });
 
 export default SurveyScreen;
-
