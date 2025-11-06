@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 
-const SurveyScreen = ({ onComplete }) => {
+const Start_SurveyScreen = ({ onComplete }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -495,4 +495,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SurveyScreen;
+export default Start_SurveyScreen;
