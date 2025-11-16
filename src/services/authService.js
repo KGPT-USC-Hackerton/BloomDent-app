@@ -92,6 +92,28 @@ export const getUserById = async (userId) => {
 };
 
 /**
+ * 아이디 중복 확인
+ * @param {string} username - 확인할 아이디
+ * @returns {Promise<Object>} - { available: boolean, message: string }
+ */
+export const checkUsernameAvailability = async (username) => {
+  try {
+    const response = await get(`/users/check-username?username=${encodeURIComponent(username)}`);
+    return response;
+  } catch (error) {
+    // 409 Conflict는 중복을 의미
+    if (error.status === 409) {
+      return {
+        available: false,
+        message: error.message || '이미 사용 중인 아이디입니다.',
+      };
+    }
+    // 네트워크 오류 등 기타 에러
+    throw error;
+  }
+};
+
+/**
  * 설문 완료 여부 조회
  * @returns {Promise<boolean>} - 설문 완료 여부
  */

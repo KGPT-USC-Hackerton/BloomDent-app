@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { setTempSignUpData } from '../utils/storage';
+import { checkUsernameAvailability } from '../services/authService';
 
 const SignUpScreen = ({ onNavigateToSurvey, onBackToLogin }) => {
   const [formData, setFormData] = useState({
@@ -64,6 +65,19 @@ const SignUpScreen = ({ onNavigateToSurvey, onBackToLogin }) => {
 
     setLoading(true);
     try {
+      // 아이디 중복 확인
+      const usernameCheck = await checkUsernameAvailability(formData.username);
+      
+      if (!usernameCheck.available) {
+        // 중복된 아이디인 경우
+        setErrors((prev) => ({
+          ...prev,
+          username: usernameCheck.message || '이미 사용 중인 아이디입니다.',
+        }));
+        setLoading(false);
+        return;
+      }
+
       // 비밀번호 확인 필드 제거
       const { passwordConfirm, ...signUpData } = formData;
       
@@ -76,7 +90,13 @@ const SignUpScreen = ({ onNavigateToSurvey, onBackToLogin }) => {
       }
     } catch (error) {
       console.error('회원가입 정보 저장 오류:', error);
-      Alert.alert('오류', '회원가입 정보 저장 중 오류가 발생했습니다.');
+      
+      // 네트워크 오류 등 기타 에러 처리
+      if (error.status === 0) {
+        Alert.alert('오류', '네트워크 연결을 확인해주세요.');
+      } else {
+        Alert.alert('오류', '회원가입 정보 저장 중 오류가 발생했습니다.');
+      }
     } finally {
       setLoading(false);
     }
