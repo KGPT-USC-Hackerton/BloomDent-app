@@ -1,7 +1,66 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import { logout } from '../services/authService';
+import { getCurrentUser } from '../services/authService';
 
-export default function MyPageScreen() {
+export default function MyPageScreen({ navigation, onLogout }) {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    loadUserInfo();
+  }, []);
+
+  // 화면 포커스 시 사용자 정보 다시 로드 (프로필 수정 후 돌아올 때)
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener('focus', () => {
+      loadUserInfo();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadUserInfo = async () => {
+    try {
+      const userData = await getCurrentUser();
+      setUser(userData);
+    } catch (error) {
+      console.error('사용자 정보 로드 오류:', error);
+    }
+  };
+
+  const handleEditProfile = () => {
+    if (navigation) {
+      navigation.navigate('EditProfile');
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      '로그아웃',
+      '정말 로그아웃하시겠습니까?',
+      [
+        {
+          text: '취소',
+          style: 'cancel',
+        },
+        {
+          text: '로그아웃',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await logout();
+              if (onLogout) {
+                onLogout();
+              }
+            } catch (error) {
+              console.error('로그아웃 오류:', error);
+              Alert.alert('오류', '로그아웃 중 오류가 발생했습니다.');
+            }
+          },
+        },
+      ]
+    );
+  };
   return (
     <ScrollView style={styles.container}>
       {/* 프로필 섹션 */}
@@ -11,11 +70,11 @@ export default function MyPageScreen() {
             <Text style={styles.avatarText}>👤</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>김건강</Text>
-            <Text style={styles.profileEmail}>kim.health@email.com</Text>
-            <Text style={styles.profileMembership}>프리미엄 회원</Text>
+            <Text style={styles.profileName}>{user?.name || '사용자'}</Text>
+            <Text style={styles.profileEmail}>{user?.email || user?.username || ''}</Text>
+            <Text style={styles.profileMembership}>일반 회원</Text>
           </View>
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
             <Text style={styles.editButtonText}>✏️</Text>
           </TouchableOpacity>
         </View>
@@ -131,7 +190,7 @@ export default function MyPageScreen() {
 
       {/* 로그아웃 */}
       <View style={styles.section}>
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>🚪 로그아웃</Text>
         </TouchableOpacity>
       </View>
