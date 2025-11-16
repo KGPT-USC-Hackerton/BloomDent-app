@@ -54,7 +54,7 @@ const LoginScreen = ({ onLogin, onNavigateToSignUp }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>로그인</Text>
+        <Text style={styles.title}>Bloomdent에 오신 것을 환영합니다.</Text>
         <TextInput
           style={styles.input}
           placeholder="아이디"
