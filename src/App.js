@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import HomeScreen from './screens/HomeScreen';
 import CareScreen from './screens/CareScreen';
 import AppointmentScreen from './screens/AppointmentScreen';
 import MyPageScreen from './screens/MyPageScreen';
+import EditProfileScreen from './screens/EditProfileScreen';
 import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import Start_SurveyScreen from './screens/Start_SurveyScreen';
@@ -16,6 +18,25 @@ import { getCurrentUser } from './services/authService';
 import { getSurveyCompleted } from './utils/storage';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+// MyPage Stack Navigator 컴포넌트
+function MyPageStack({ onLogout }) {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MyPageMain">
+        {(props) => <MyPageScreen {...props} onLogout={onLogout} />}
+      </Stack.Screen>
+      <Stack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+    </Stack.Navigator>
+  );
+}
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -174,7 +195,7 @@ function App() {
                 <Icon name="person" color={color} size={size} />
               ),
             }}>
-            {(props) => <MyPageScreen {...props} onLogout={handleLogout} />}
+            {() => <MyPageStack onLogout={handleLogout} />}
           </Tab.Screen>
         </Tab.Navigator>
       </NavigationContainer>

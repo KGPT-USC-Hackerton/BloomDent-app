@@ -3,12 +3,21 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } f
 import { logout } from '../services/authService';
 import { getCurrentUser } from '../services/authService';
 
-export default function MyPageScreen({ onLogout }) {
+export default function MyPageScreen({ navigation, onLogout }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
     loadUserInfo();
   }, []);
+
+  // 화면 포커스 시 사용자 정보 다시 로드 (프로필 수정 후 돌아올 때)
+  useEffect(() => {
+    const unsubscribe = navigation?.addListener('focus', () => {
+      loadUserInfo();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadUserInfo = async () => {
     try {
@@ -16,6 +25,12 @@ export default function MyPageScreen({ onLogout }) {
       setUser(userData);
     } catch (error) {
       console.error('사용자 정보 로드 오류:', error);
+    }
+  };
+
+  const handleEditProfile = () => {
+    if (navigation) {
+      navigation.navigate('EditProfile');
     }
   };
 
@@ -59,7 +74,7 @@ export default function MyPageScreen({ onLogout }) {
             <Text style={styles.profileEmail}>{user?.email || user?.username || ''}</Text>
             <Text style={styles.profileMembership}>일반 회원</Text>
           </View>
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
             <Text style={styles.editButtonText}>✏️</Text>
           </TouchableOpacity>
         </View>
