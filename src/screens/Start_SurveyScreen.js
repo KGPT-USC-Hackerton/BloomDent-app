@@ -7,11 +7,15 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { register } from '../services/authService';
+import { getTempSignUpData } from '../utils/storage';
 
-const Start_SurveyScreen = ({ onComplete }) => {
+const Start_SurveyScreen = ({ onComplete, isNewUser = false }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [answers, setAnswers] = useState({
     // 기본정보
@@ -97,14 +101,76 @@ const Start_SurveyScreen = ({ onComplete }) => {
     };
   }, []);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (answers[currentQuestion.key] === null) {
       Alert.alert('알림', '답변을 선택해주세요.');
       return;
     }
 
     if (isLastQuestion) {
-      // 마지막 문항이면 제출 메시지 표시 후 카운트다운 시작
+      // 마지막 문항이면 설문 완료 처리
+      await handleSubmit();
+    } else {
+      // 다음 문항으로 이동
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (isNewUser) {
+      // 신규 회원가입인 경우: 설문 완료 후 회원가입 API 호출
+      setIsRegistering(true);
+      try {
+        const tempSignUpData = await getTempSignUpData();
+        
+        if (!tempSignUpData) {
+          Alert.alert('오류', '회원가입 정보를 찾을 수 없습니다.');
+          setIsRegistering(false);
+          return;
+        }
+
+        // 회원가입 API 호출 (설문 답변 포함)
+        const response = await register({
+          ...tempSignUpData,
+          surveyAnswers: answers,
+        });
+
+        if (response.success) {
+          setIsSubmitting(true);
+          setCountdown(3);
+          
+          // 1초마다 카운트다운
+          countdownIntervalRef.current = setInterval(() => {
+            setCountdown((prev) => {
+              if (prev <= 1) {
+                if (countdownIntervalRef.current) {
+                  clearInterval(countdownIntervalRef.current);
+                }
+                if (onComplete) {
+                  onComplete(answers);
+                }
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+      } catch (error) {
+        setIsRegistering(false);
+        let errorMessage = '회원가입 중 오류가 발생했습니다.';
+        
+        if (error.status === 409) {
+          errorMessage = error.message || '이미 사용 중인 아이디입니다.';
+        } else if (error.status === 400) {
+          errorMessage = error.message || '입력 정보를 확인해주세요.';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+
+        Alert.alert('오류', errorMessage);
+      }
+    } else {
+      // 기존 사용자 설문인 경우: 기존 로직 유지
       setIsSubmitting(true);
       setCountdown(3);
       
@@ -115,15 +181,14 @@ const Start_SurveyScreen = ({ onComplete }) => {
             if (countdownIntervalRef.current) {
               clearInterval(countdownIntervalRef.current);
             }
-            onComplete(answers);
+            if (onComplete) {
+              onComplete(answers);
+            }
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-    } else {
-      // 다음 문항으로 이동
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
     }
   };
 
@@ -145,6 +210,18 @@ const Start_SurveyScreen = ({ onComplete }) => {
   };
 
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+
+  // 회원가입 처리 중일 때 로딩 표시
+  if (isRegistering) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.submitMessageContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>회원가입 처리 중...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // 제출 중일 때 완료 메시지 및 카운트다운 표시
   if (isSubmitting) {
@@ -492,6 +569,12 @@ const styles = StyleSheet.create({
     color: '#0284c7',
     minWidth: 40,
     textAlign: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#64748b',
+    fontWeight: '600',
   },
 });
 

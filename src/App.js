@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, SafeAreaView } from 'react-native';
+import { View, StyleSheet, SafeAreaView, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -9,38 +9,107 @@ import CareScreen from './screens/CareScreen';
 import AppointmentScreen from './screens/AppointmentScreen';
 import MyPageScreen from './screens/MyPageScreen';
 import LoginScreen from './screens/LoginScreen';
+import SignUpScreen from './screens/SignUpScreen';
 import Start_SurveyScreen from './screens/Start_SurveyScreen';
 import LearnScreen from './screens/LearnScreen';
+import { getCurrentUser } from './services/authService';
+import { getSurveyCompleted } from './utils/storage';
 
 const Tab = createBottomTabNavigator();
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [surveyCompleted, setSurveyCompleted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showSignUp, setShowSignUp] = useState(false);
+  const [showSurvey, setShowSurvey] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
 
-  // 앱 시작 시 설문 완료 여부 확인 (AsyncStorage 대신 간단하게 localStorage 사용)
+  // 앱 시작 시 저장된 사용자 정보 확인 (자동 로그인)
   useEffect(() => {
-    // React Native에서는 AsyncStorage를 사용해야 하지만, 
-    // 여기서는 간단한 state로 관리 (웹에서는 localStorage 사용)
+    checkAuthStatus();
   }, []);
 
-  const handleLogin = () => {
-    setIsLoggedIn(true);
-    // 로그인 후 설문 완료 여부 확인은 SurveyScreen에서 처리
+  const checkAuthStatus = async () => {
+    try {
+      const user = await getCurrentUser();
+      if (user) {
+        setIsLoggedIn(true);
+        // 설문 완료 여부 확인
+        const completed = await getSurveyCompleted();
+        setSurveyCompleted(completed);
+      }
+    } catch (error) {
+      console.error('인증 상태 확인 오류:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSurveyComplete = (answers) => {
-    // 설문 답변 저장 (실제로는 서버에 전송하거나 저장)
-    console.log('Survey answers:', answers);
+  const handleLogin = async (user) => {
+    setIsLoggedIn(true);
+    setShowSignUp(false);
+    // 로그인한 사용자는 이미 설문을 완료한 것으로 간주 (DB에 저장된 사용자)
     setSurveyCompleted(true);
   };
 
-  if (!isLoggedIn) {
-    return <LoginScreen onLogin={handleLogin} />;
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setSurveyCompleted(false);
+    setShowSurvey(false);
+    setIsNewUser(false);
+  };
+
+  const handleNavigateToSurvey = () => {
+    // 회원가입 후 설문 화면으로 이동
+    setShowSignUp(false);
+    setShowSurvey(true);
+    setIsNewUser(true);
+  };
+
+  const handleSurveyComplete = (answers) => {
+    // 설문 완료 후 메인 화면으로 이동
+    setSurveyCompleted(true);
+    setShowSurvey(false);
+    setIsNewUser(false);
+    setIsLoggedIn(true);
+  };
+
+  // 로딩 중
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
   }
 
-  if (!surveyCompleted) {
-    return <Start_SurveyScreen onComplete={handleSurveyComplete} />;
+  // 로그인 화면 또는 회원가입 화면
+  if (!isLoggedIn && !showSurvey) {
+    if (showSignUp) {
+      return (
+        <SignUpScreen
+          onNavigateToSurvey={handleNavigateToSurvey}
+          onBackToLogin={() => setShowSignUp(false)}
+        />
+      );
+    }
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        onNavigateToSignUp={() => setShowSignUp(true)}
+      />
+    );
+  }
+
+  // 신규 회원가입 후 설문 화면
+  if (showSurvey && isNewUser) {
+    return <Start_SurveyScreen onComplete={handleSurveyComplete} isNewUser={true} />;
+  }
+
+  // 기존 사용자 설문 (현재는 사용하지 않지만 나중을 위해 유지)
+  if (isLoggedIn && !surveyCompleted && !isNewUser) {
+    return <Start_SurveyScreen onComplete={handleSurveyComplete} isNewUser={false} />;
   }
 
   return (
@@ -99,14 +168,14 @@ function App() {
 
           <Tab.Screen
             name="My Page"
-            component={MyPageScreen}
             options={{
               title: '마이페이지',
               tabBarIcon: ({ color, size }) => (
                 <Icon name="person" color={color} size={size} />
               ),
-            }}
-          />
+            }}>
+            {(props) => <MyPageScreen {...props} onLogout={handleLogout} />}
+          </Tab.Screen>
         </Tab.Navigator>
       </NavigationContainer>
     </View>
@@ -116,6 +185,10 @@ function App() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   topSafeArea: { flex: 0, backgroundColor: '#f8f9fa' },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
 
 export default App;

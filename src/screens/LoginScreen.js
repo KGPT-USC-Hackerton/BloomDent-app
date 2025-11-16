@@ -7,18 +7,47 @@ import {
   StyleSheet,
   SafeAreaView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { login } from '../services/authService';
 
-const LoginScreen = ({ onLogin }) => {
-  const [id, setId] = useState('');
+const LoginScreen = ({ onLogin, onNavigateToSignUp }) => {
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
-    // 아이디나 비밀번호 어느 곳에 'test' 입력해도 로그인 성공
-    if (id.trim().toLowerCase() === 'test' || password.trim().toLowerCase() === 'test') {
-      onLogin();
-    } else {
-      Alert.alert('오류', '올바른 입력값을 입력해주세요.');
+  const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) {
+      Alert.alert('오류', '아이디와 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await login(username.trim(), password);
+      
+      if (response.success) {
+        // 로그인 성공
+        if (onLogin) {
+          onLogin(response.data.user);
+        }
+      }
+    } catch (error) {
+      let errorMessage = '로그인 중 오류가 발생했습니다.';
+      
+      if (error.status === 401) {
+        errorMessage = error.message || '아이디 또는 비밀번호가 일치하지 않습니다.';
+      } else if (error.status === 400) {
+        errorMessage = error.message || '아이디와 비밀번호를 입력해주세요.';
+      } else if (error.status === 0) {
+        errorMessage = error.message || '네트워크 연결을 확인해주세요.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      Alert.alert('오류', errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -29,10 +58,11 @@ const LoginScreen = ({ onLogin }) => {
         <TextInput
           style={styles.input}
           placeholder="아이디"
-          value={id}
-          onChangeText={setId}
+          value={username}
+          onChangeText={setUsername}
           autoCapitalize="none"
           autoCorrect={false}
+          editable={!loading}
         />
         <TextInput
           style={styles.input}
@@ -42,9 +72,28 @@ const LoginScreen = ({ onLogin }) => {
           autoCapitalize="none"
           autoCorrect={false}
           secureTextEntry={true}
+          textContentType="none"
+          autoComplete="off"
+          editable={!loading}
         />
-        <TouchableOpacity style={styles.button} onPress={handleLogin}>
-          <Text style={styles.buttonText}>로그인</Text>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>로그인</Text>
+          )}
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.linkButton}
+          onPress={onNavigateToSignUp}
+          disabled={loading}
+        >
+          <Text style={styles.linkText}>계정이 없으신가요? 회원가입</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -87,10 +136,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   buttonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  linkButton: {
+    marginTop: 20,
+  },
+  linkText: {
+    color: '#007AFF',
+    fontSize: 14,
   },
 });
 
