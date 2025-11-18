@@ -1,5 +1,5 @@
 // API 기본 설정
-const API_BASE_URL = 'http://100.69.150.33:8888/api';
+const API_BASE_URL = 'http://210.119.33.3:3000/api';
 
 // 공통 fetch 함수
 export const apiRequest = async (endpoint, options = {}) => {
