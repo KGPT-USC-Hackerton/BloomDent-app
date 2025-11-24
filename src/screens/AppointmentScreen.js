@@ -1,17 +1,76 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Platform, PermissionsAndroid } from 'react-native';
+import { NaverMapView, NaverMapMarkerOverlay } from '@mj-studio/react-native-naver-map';
+import Geolocation from '@react-native-community/geolocation';
 
 export default function AppointmentScreen() {
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyStep, setSurveyStep] = useState(0);
   const [surveyAnswers, setSurveyAnswers] = useState([]);
+  const [showFullscreenMap, setShowFullscreenMap] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState({
+    latitude: 37.5665, // 서울 기본 좌표
+    longitude: 126.9780,
+  });
+
+  // 현재 위치 가져오기
+  useEffect(() => {
+    const requestLocationPermission = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+              title: '위치 권한 요청',
+              message: '근처 치과를 찾기 위해 위치 권한이 필요합니다.',
+              buttonNeutral: '나중에',
+              buttonNegative: '거부',
+              buttonPositive: '허용',
+            }
+          );
+          if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+            getCurrentLocation();
+          }
+        } catch (err) {
+          console.warn(err);
+        }
+      } else {
+        // iOS는 Info.plist 설정만으로 자동 요청
+        getCurrentLocation();
+      }
+    };
+
+    const getCurrentLocation = () => {
+      Geolocation.getCurrentPosition(
+        (position) => {
+          setCurrentLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        (error) => {
+          console.log('위치 가져오기 실패:', error);
+          Alert.alert(
+            '위치 정보',
+            '현재 위치를 가져올 수 없습니다. 기본 위치(서울)를 표시합니다.',
+            [{ text: '확인' }]
+          );
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    };
+
+    requestLocationPermission();
+  }, []);
 
   const mockClinics = [
     {
       id: 1,
       name: '서울치과의원',
       address: '서울시 강남구 테헤란로 123',
+      latitude: 37.5665,
+      longitude: 127.0380,
       rating: 4.8,
       distance: '0.5km',
       availableSlots: ['09:00', '10:30', '14:00', '16:30'],
@@ -21,6 +80,8 @@ export default function AppointmentScreen() {
       id: 2,
       name: '건강한치과',
       address: '서울시 강남구 역삼동 456',
+      latitude: 37.5010,
+      longitude: 127.0360,
       rating: 4.6,
       distance: '0.8km',
       availableSlots: ['09:30', '11:00', '15:00', '17:00'],
@@ -30,6 +91,8 @@ export default function AppointmentScreen() {
       id: 3,
       name: '미소치과병원',
       address: '서울시 강남구 논현동 789',
+      latitude: 37.5110,
+      longitude: 127.0220,
       rating: 4.9,
       distance: '1.2km',
       availableSlots: ['10:00', '13:30', '15:30'],
@@ -125,15 +188,104 @@ export default function AppointmentScreen() {
       {/* 지도 영역 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>근처 치과 찾기</Text>
-        <View style={styles.mapCard}>
-          <View style={styles.mapContainer}>
-            <View style={styles.mapOverlay}>
-              <Text style={styles.mapIcon}>🗺️</Text>
-              <Text style={styles.mapText}>현재 위치 기준</Text>
-            </View>
+        <TouchableOpacity 
+          style={styles.mapCard}
+          onPress={() => setShowFullscreenMap(true)}
+          activeOpacity={0.8}
+        >
+          <NaverMapView
+            style={styles.mapContainer}
+            center={{
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              zoom: 15,
+            }}
+          >
+            {/* 현재 위치 마커 */}
+            <NaverMapMarkerOverlay
+              latitude={currentLocation.latitude}
+              longitude={currentLocation.longitude}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.currentLocationMarker}>
+                <View style={styles.currentLocationDot} />
+              </View>
+            </NaverMapMarkerOverlay>
+            
+            {/* 치과 마커들 */}
+            {mockClinics.map((clinic) => (
+              <NaverMapMarkerOverlay
+                key={clinic.id}
+                latitude={clinic.latitude}
+                longitude={clinic.longitude}
+                anchor={{ x: 0.5, y: 1 }}
+              >
+                <View style={styles.clinicMarker}>
+                  <View style={styles.clinicMarkerContent}>
+                    <Text style={styles.clinicMarkerText}>🦷</Text>
+                  </View>
+                  <View style={styles.clinicMarkerArrow} />
+                </View>
+              </NaverMapMarkerOverlay>
+            ))}
+          </NaverMapView>
+          <View style={styles.mapOverlayHint}>
+            <Text style={styles.mapOverlayText}>📍 지도를 탭하여 확대</Text>
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
+
+      {/* 풀스크린 지도 모달 */}
+      <Modal
+        visible={showFullscreenMap}
+        animationType="slide"
+        onRequestClose={() => setShowFullscreenMap(false)}
+      >
+        <View style={styles.fullscreenMapContainer}>
+          <NaverMapView
+            style={styles.fullscreenMap}
+            center={{
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              zoom: 15,
+            }}
+          >
+            {/* 현재 위치 마커 */}
+            <NaverMapMarkerOverlay
+              latitude={currentLocation.latitude}
+              longitude={currentLocation.longitude}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.currentLocationMarker}>
+                <View style={styles.currentLocationDot} />
+              </View>
+            </NaverMapMarkerOverlay>
+            
+            {/* 치과 마커들 */}
+            {mockClinics.map((clinic) => (
+              <NaverMapMarkerOverlay
+                key={clinic.id}
+                latitude={clinic.latitude}
+                longitude={clinic.longitude}
+                anchor={{ x: 0.5, y: 1 }}
+              >
+                <View style={styles.clinicMarker}>
+                  <View style={styles.clinicMarkerContent}>
+                    <Text style={styles.clinicMarkerText}>🦷</Text>
+                  </View>
+                  <View style={styles.clinicMarkerArrow} />
+                </View>
+              </NaverMapMarkerOverlay>
+            ))}
+          </NaverMapView>
+          <TouchableOpacity
+            style={styles.closeMapButton}
+            onPress={() => setShowFullscreenMap(false)}
+          >
+            <Text style={styles.closeMapButtonText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* 치과 리스트 */}
       <View style={styles.section}>
@@ -310,6 +462,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  mapOverlayHint: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  mapOverlayText: {
+    color: 'white',
+    fontSize: 14,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
   mapIcon: {
     fontSize: 32,
     marginBottom: 8,
@@ -317,6 +485,94 @@ const styles = StyleSheet.create({
   mapText: {
     color: 'white',
     fontSize: 16,
+  },
+  fullscreenMapContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fullscreenMap: {
+    flex: 1,
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    width: 40,
+    height: 40,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  closeMapButtonText: {
+    fontSize: 24,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  currentLocationMarker: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#3b82f6',
+    borderWidth: 3,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  clinicMarker: {
+    alignItems: 'center',
+  },
+  clinicMarkerContent: {
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  clinicMarkerText: {
+    fontSize: 20,
+  },
+  clinicMarkerArrow: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#ef4444',
+    marginTop: -2,
   },
   clinicList: {
     gap: 16,
