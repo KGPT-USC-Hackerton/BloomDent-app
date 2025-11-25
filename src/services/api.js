@@ -83,3 +83,18 @@ export const del = (endpoint, options = {}) => {
   });
 };
 
+// ============================================
+// 치과 API
+// ============================================
+
+// 주변 치과 검색
+export const getNearbyDentists = async (latitude, longitude, radius = 5) => {
+  try {
+    const response = await get(`/clinics/nearby?latitude=${latitude}&longitude=${longitude}&radius=${radius}`);
+    return response;
+  } catch (error) {
+    console.error('주변 치과 검색 실패:', error);
+    throw error;
+  }
+};
+

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Platform, PermissionsAndroid } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Platform, PermissionsAndroid, ActivityIndicator } from 'react-native';
 import { NaverMapView, NaverMapMarkerOverlay } from '@mj-studio/react-native-naver-map';
 import Geolocation from '@react-native-community/geolocation';
+import { getNearbyDentists } from '../services/api';
 
 export default function AppointmentScreen() {
   const [selectedClinic, setSelectedClinic] = useState(null);
@@ -13,6 +14,9 @@ export default function AppointmentScreen() {
     latitude: 37.5665, // 서울 기본 좌표
     longitude: 126.9780,
   });
+  const [clinics, setClinics] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   // 현재 위치 가져오기
   useEffect(() => {
@@ -44,10 +48,13 @@ export default function AppointmentScreen() {
     const getCurrentLocation = () => {
       Geolocation.getCurrentPosition(
         (position) => {
-          setCurrentLocation({
+          const newLocation = {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-          });
+          };
+          setCurrentLocation(newLocation);
+          // 위치를 가져온 후 주변 치과 검색
+          fetchNearbyDentists(newLocation.latitude, newLocation.longitude);
         },
         (error) => {
           console.log('위치 가져오기 실패:', error);
@@ -56,6 +63,8 @@ export default function AppointmentScreen() {
             '현재 위치를 가져올 수 없습니다. 기본 위치(서울)를 표시합니다.',
             [{ text: '확인' }]
           );
+          // 기본 위치로 치과 검색
+          fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude);
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
       );
@@ -64,41 +73,26 @@ export default function AppointmentScreen() {
     requestLocationPermission();
   }, []);
 
-  const mockClinics = [
-    {
-      id: 1,
-      name: '서울치과의원',
-      address: '서울시 강남구 테헤란로 123',
-      latitude: 37.5665,
-      longitude: 127.0380,
-      rating: 4.8,
-      distance: '0.5km',
-      availableSlots: ['09:00', '10:30', '14:00', '16:30'],
-      phone: '02-123-4567'
-    },
-    {
-      id: 2,
-      name: '건강한치과',
-      address: '서울시 강남구 역삼동 456',
-      latitude: 37.5010,
-      longitude: 127.0360,
-      rating: 4.6,
-      distance: '0.8km',
-      availableSlots: ['09:30', '11:00', '15:00', '17:00'],
-      phone: '02-234-5678'
-    },
-    {
-      id: 3,
-      name: '미소치과병원',
-      address: '서울시 강남구 논현동 789',
-      latitude: 37.5110,
-      longitude: 127.0220,
-      rating: 4.9,
-      distance: '1.2km',
-      availableSlots: ['10:00', '13:30', '15:30'],
-      phone: '02-345-6789'
+  // 주변 치과 검색 API 호출
+  const fetchNearbyDentists = async (latitude, longitude, radius = 5) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getNearbyDentists(latitude, longitude, radius);
+      
+      if (response.success) {
+        setClinics(response.data);
+      } else {
+        setError('치과 정보를 가져오는데 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('치과 검색 오류:', err);
+      setError(err.message || '치과 정보를 가져오는데 실패했습니다.');
+      Alert.alert('오류', '치과 정보를 가져오는데 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
   const surveyQuestions = [
     {
@@ -194,6 +188,7 @@ export default function AppointmentScreen() {
           activeOpacity={0.8}
         >
           <NaverMapView
+            key={`map-${currentLocation.latitude}-${currentLocation.longitude}`}
             style={styles.mapContainer}
             center={{
               latitude: currentLocation.latitude,
@@ -213,11 +208,11 @@ export default function AppointmentScreen() {
             </NaverMapMarkerOverlay>
             
             {/* 치과 마커들 */}
-            {mockClinics.map((clinic) => (
+            {clinics.map((clinic) => (
               <NaverMapMarkerOverlay
                 key={clinic.id}
-                latitude={clinic.latitude}
-                longitude={clinic.longitude}
+                latitude={parseFloat(clinic.latitude)}
+                longitude={parseFloat(clinic.longitude)}
                 anchor={{ x: 0.5, y: 1 }}
               >
                 <View style={styles.clinicMarker}>
@@ -243,6 +238,7 @@ export default function AppointmentScreen() {
       >
         <View style={styles.fullscreenMapContainer}>
           <NaverMapView
+            key={`fullscreen-map-${currentLocation.latitude}-${currentLocation.longitude}`}
             style={styles.fullscreenMap}
             center={{
               latitude: currentLocation.latitude,
@@ -262,11 +258,11 @@ export default function AppointmentScreen() {
             </NaverMapMarkerOverlay>
             
             {/* 치과 마커들 */}
-            {mockClinics.map((clinic) => (
+            {clinics.map((clinic) => (
               <NaverMapMarkerOverlay
                 key={clinic.id}
-                latitude={clinic.latitude}
-                longitude={clinic.longitude}
+                latitude={parseFloat(clinic.latitude)}
+                longitude={parseFloat(clinic.longitude)}
                 anchor={{ x: 0.5, y: 1 }}
               >
                 <View style={styles.clinicMarker}>
@@ -289,53 +285,81 @@ export default function AppointmentScreen() {
 
       {/* 치과 리스트 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>예약 가능한 치과</Text>
-        <View style={styles.clinicList}>
-          {mockClinics.map((clinic) => (
-            <View key={clinic.id} style={styles.clinicCard}>
-              <View style={styles.clinicInfo}>
-                <View style={styles.clinicHeader}>
-                  <Text style={styles.clinicName}>{clinic.name}</Text>
-                  <View style={styles.clinicRating}>
-                    <Text style={styles.starIcon}>⭐</Text>
-                    <Text style={styles.ratingText}>{clinic.rating}</Text>
-                    <Text style={styles.separator}>•</Text>
-                    <Text style={styles.distanceText}>{clinic.distance}</Text>
+        <Text style={styles.sectionTitle}>예약 가능한 치과 ({clinics.length})</Text>
+        
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#3b82f6" />
+            <Text style={styles.loadingText}>주변 치과를 검색하는 중...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>❌</Text>
+            <Text style={styles.errorMessage}>{error}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={() => fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude)}
+            >
+              <Text style={styles.retryButtonText}>다시 시도</Text>
+            </TouchableOpacity>
+          </View>
+        ) : clinics.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>😔</Text>
+            <Text style={styles.emptyMessage}>주변에 치과가 없습니다.</Text>
+          </View>
+        ) : (
+          <View style={styles.clinicList}>
+            {clinics.map((clinic) => (
+              <View key={clinic.id} style={styles.clinicCard}>
+                <View style={styles.clinicInfo}>
+                  <View style={styles.clinicHeader}>
+                    <Text style={styles.clinicName}>{clinic.name}</Text>
+                    <View style={styles.clinicRating}>
+                      <Text style={styles.starIcon}>⭐</Text>
+                      <Text style={styles.ratingText}>{clinic.rating || 'N/A'}</Text>
+                      <Text style={styles.separator}>•</Text>
+                      <Text style={styles.distanceText}>{clinic.distance ? `${clinic.distance}km` : 'N/A'}</Text>
+                    </View>
                   </View>
-                </View>
 
-                <View style={styles.clinicDetails}>
-                  <View style={styles.clinicDetail}>
-                    <Text style={styles.detailIcon}>📍</Text>
-                    <Text style={styles.detailText}>{clinic.address}</Text>
-                  </View>
-                  <View style={styles.clinicDetail}>
-                    <Text style={styles.detailIcon}>📞</Text>
-                    <Text style={styles.detailText}>{clinic.phone}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.slotsSection}>
-                  <Text style={styles.slotsLabel}>예약 가능 시간</Text>
-                  <View style={styles.slotsContainer}>
-                    {clinic.availableSlots.map((slot, index) => (
-                      <View key={index} style={styles.slotTag}>
-                        <Text style={styles.slotText}>{slot}</Text>
+                  <View style={styles.clinicDetails}>
+                    <View style={styles.clinicDetail}>
+                      <Text style={styles.detailIcon}>📍</Text>
+                      <Text style={styles.detailText}>{clinic.address}</Text>
+                    </View>
+                    {clinic.phone && (
+                      <View style={styles.clinicDetail}>
+                        <Text style={styles.detailIcon}>📞</Text>
+                        <Text style={styles.detailText}>{clinic.phone}</Text>
                       </View>
-                    ))}
+                    )}
                   </View>
-                </View>
 
-                <TouchableOpacity
-                  onPress={() => handleBooking(clinic)}
-                  style={styles.bookingButton}
-                >
-                  <Text style={styles.bookingButtonText}>📅 예약하기</Text>
-                </TouchableOpacity>
+                  {clinic.availableSlots && clinic.availableSlots.length > 0 && (
+                    <View style={styles.slotsSection}>
+                      <Text style={styles.slotsLabel}>예약 가능 시간</Text>
+                      <View style={styles.slotsContainer}>
+                        {clinic.availableSlots.map((slot, index) => (
+                          <View key={index} style={styles.slotTag}>
+                            <Text style={styles.slotText}>{slot}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    onPress={() => handleBooking(clinic)}
+                    style={styles.bookingButton}
+                  >
+                    <Text style={styles.bookingButtonText}>📅 예약하기</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
       </View>
 
       {/* 예약 현황 */}
@@ -573,6 +597,68 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderTopColor: '#ef4444',
     marginTop: -2,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  errorText: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  emptyText: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  emptyMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
   },
   clinicList: {
     gap: 16,
