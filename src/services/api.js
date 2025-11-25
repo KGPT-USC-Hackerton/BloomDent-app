@@ -98,3 +98,18 @@ export const getNearbyDentists = async (latitude, longitude, radius = 5) => {
   }
 };
 
+// 사용자의 예약 목록 조회
+export const getUserAppointments = async (userId, status = null) => {
+  try {
+    let endpoint = `/users/${userId}/appointments`;
+    if (status) {
+      endpoint += `?status=${status}`;
+    }
+    const response = await get(endpoint);
+    return response;
+  } catch (error) {
+    console.error('예약 목록 조회 실패:', error);
+    throw error;
+  }
+};
+

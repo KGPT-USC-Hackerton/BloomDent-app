@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Platform, PermissionsAndroid, ActivityIndicator } from 'react-native';
 import { NaverMapView, NaverMapMarkerOverlay } from '@mj-studio/react-native-naver-map';
 import Geolocation from '@react-native-community/geolocation';
-import { getNearbyDentists } from '../services/api';
+import { getNearbyDentists, getUserAppointments } from '../services/api';
+import { getUser } from '../utils/storage';
 
 export default function AppointmentScreen() {
   const [selectedClinic, setSelectedClinic] = useState(null);
@@ -17,6 +18,10 @@ export default function AppointmentScreen() {
   const [clinics, setClinics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [appointments, setAppointments] = useState([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentsError, setAppointmentsError] = useState(null);
+  const [showAppointmentsModal, setShowAppointmentsModal] = useState(false);
 
   // 현재 위치 가져오기
   useEffect(() => {
@@ -71,7 +76,36 @@ export default function AppointmentScreen() {
     };
 
     requestLocationPermission();
+    fetchAppointments();
   }, []);
+
+  // 예약 목록 가져오기
+  const fetchAppointments = async () => {
+    try {
+      setAppointmentsLoading(true);
+      setAppointmentsError(null);
+      
+      const userData = await getUser();
+      if (!userData || !userData.id) {
+        setAppointmentsError('로그인이 필요합니다.');
+        setAppointmentsLoading(false);
+        return;
+      }
+
+      const response = await getUserAppointments(userData.id);
+      
+      if (response.success) {
+        setAppointments(response.data);
+      } else {
+        setAppointmentsError('예약 정보를 가져오는데 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('예약 목록 조회 오류:', err);
+      setAppointmentsError(err.message || '예약 정보를 가져오는데 실패했습니다.');
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  };
 
   // 주변 치과 검색 API 호출
   const fetchNearbyDentists = async (latitude, longitude, radius = 5) => {
@@ -178,10 +212,24 @@ export default function AppointmentScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      {/* 지도 영역 */}
+    <View style={styles.container}>
+      <ScrollView style={styles.scrollView}>
+        {/* 지도 영역 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>근처 치과 찾기</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>근처 치과 찾기</Text>
+          <TouchableOpacity 
+            style={styles.appointmentButton}
+            onPress={() => setShowAppointmentsModal(true)}
+          >
+            <Text style={styles.appointmentButtonIcon}>📅</Text>
+            {appointments.length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{appointments.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity 
           style={styles.mapCard}
           onPress={() => setShowFullscreenMap(true)}
@@ -319,7 +367,9 @@ export default function AppointmentScreen() {
                       <Text style={styles.starIcon}>⭐</Text>
                       <Text style={styles.ratingText}>{clinic.rating || 'N/A'}</Text>
                       <Text style={styles.separator}>•</Text>
-                      <Text style={styles.distanceText}>{clinic.distance ? `${clinic.distance}km` : 'N/A'}</Text>
+                      <Text style={styles.distanceText}>
+                        {clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : 'N/A'}
+                      </Text>
                     </View>
                   </View>
 
@@ -361,24 +411,87 @@ export default function AppointmentScreen() {
           </View>
         )}
       </View>
+      </ScrollView>
 
-      {/* 예약 현황 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>예약 현황</Text>
-        <View style={styles.appointmentCard}>
-          <View style={styles.appointmentContent}>
-            <View style={styles.appointmentIcon}>
-              <Text style={styles.appointmentIconText}>✅</Text>
+      {/* 예약 목록 모달 */}
+      <Modal
+        visible={showAppointmentsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAppointmentsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>나의 예약 ({appointments.length})</Text>
+              <TouchableOpacity onPress={() => setShowAppointmentsModal(false)}>
+                <Text style={styles.modalCloseButton}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.appointmentInfo}>
-              <Text style={styles.appointmentClinic}>서울치과의원</Text>
-              <Text style={styles.appointmentDate}>9월 25일 14:00</Text>
-            </View>
+
+            <ScrollView style={styles.modalContent}>
+              {appointmentsLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#3b82f6" />
+                  <Text style={styles.loadingText}>예약 정보를 불러오는 중...</Text>
+                </View>
+              ) : appointmentsError ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>❌</Text>
+                  <Text style={styles.errorMessage}>{appointmentsError}</Text>
+                  <TouchableOpacity 
+                    style={styles.retryButton}
+                    onPress={fetchAppointments}
+                  >
+                    <Text style={styles.retryButtonText}>다시 시도</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : appointments.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>📅</Text>
+                  <Text style={styles.emptyMessage}>예약 내역이 없습니다.</Text>
+                </View>
+              ) : (
+                <View style={styles.appointmentList}>
+                  {appointments.map((appointment) => (
+                    <View key={appointment.id} style={styles.appointmentCard}>
+                      <View style={styles.appointmentContent}>
+                        <View style={[
+                          styles.appointmentIcon,
+                          { backgroundColor: 
+                            appointment.status === 'confirmed' ? '#dcfce7' :
+                            appointment.status === 'completed' ? '#e0e7ff' :
+                            appointment.status === 'cancelled' ? '#fee2e2' :
+                            '#fef3c7'
+                          }
+                        ]}>
+                          <Text style={styles.appointmentIconText}>
+                            {appointment.status === 'confirmed' ? '✅' :
+                             appointment.status === 'completed' ? '✔️' :
+                             appointment.status === 'cancelled' ? '❌' :
+                             '⏰'}
+                          </Text>
+                        </View>
+                        <View style={styles.appointmentInfo}>
+                          <Text style={styles.appointmentClinic}>{appointment.clinic_name}</Text>
+                          <Text style={styles.appointmentDate}>
+                            {appointment.appointment_date} {appointment.appointment_time}
+                          </Text>
+                          {appointment.symptoms && (
+                            <Text style={styles.appointmentSymptoms}>증상: {appointment.symptoms}</Text>
+                          )}
+                        </View>
+                      </View>
+                      <Text style={styles.appointmentArrow}>→</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
           </View>
-          <Text style={styles.appointmentArrow}>→</Text>
         </View>
-      </View>
-    </ScrollView>
+      </Modal>
+    </View>
   );
 }
 
@@ -386,6 +499,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  modalCloseButton: {
+    fontSize: 28,
+    color: '#6b7280',
+    fontWeight: '300',
+  },
+  modalContent: {
+    padding: 16,
   },
   surveyHeader: {
     padding: 16,
@@ -458,11 +607,53 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     color: '#374151',
     fontWeight: '600',
-    marginBottom: 16,
+  },
+  appointmentButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    position: 'relative',
+  },
+  appointmentButtonIcon: {
+    fontSize: 24,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   mapCard: {
     backgroundColor: 'white',
@@ -753,6 +944,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  appointmentList: {
+    gap: 12,
+  },
   appointmentCard: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -791,6 +985,12 @@ const styles = StyleSheet.create({
   appointmentDate: {
     fontSize: 14,
     color: '#6b7280',
+    marginTop: 2,
+  },
+  appointmentSymptoms: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 4,
   },
   appointmentArrow: {
     color: '#9ca3af',
