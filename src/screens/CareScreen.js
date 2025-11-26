@@ -12,17 +12,25 @@ const tabs = [
 
 export default function CareScreen() {
   const [activeTab, setActiveTab] = useState('survey');
+
   const openProductLink = useCallback((url) => {
     Linking.openURL(url).catch(() => {
       Alert.alert('링크 오류', '앱에서 해당 페이지를 열 수 없습니다.');
     });
   }, []);
 
+  // ✅ SurveyComponent의 새 결과 구조에 맞게 수정
   const handleSurveySubmit = (result) => {
-    if (!result) {
-      return;
-    }
-    const score = Math.max(0, Math.min(100, result.normalizedScore ?? 0));
+    if (!result) return;
+
+    // 새 구조: result.overall.normalizedScore
+    const overallScoreRaw =
+      result?.overall?.normalizedScore ??
+      result?.normalizedScore ?? // 혹시 이전 구조가 남아있을 때 대비
+      0;
+
+    const score = Math.max(0, Math.min(100, overallScoreRaw));
+
     Alert.alert(
       '설문 결과',
       `오늘 당신의 구강 점수는 💯 중 ${score}점이에요.\n작은 습관 하나로 내일의 치아 건강을 바꿀 수 있어요.\n\n아래 구강용품을 추천드려요!`,
@@ -33,15 +41,24 @@ export default function CareScreen() {
         },
         {
           text: '전동칫솔',
-          onPress: () => openProductLink('https://www.coupang.com/vp/products/8486378493?itemId=24560295659'),
+          onPress: () =>
+            openProductLink(
+              'https://www.coupang.com/vp/products/8486378493?itemId=24560295659',
+            ),
         },
         {
           text: '치실',
-          onPress: () => openProductLink('https://www.coupang.com/vp/products/8645037348?itemId=25558036482&vendorItemId=84656604794&sourceType=srp_product_ads&clickEventId=06feba20-b8d4-11f0-8202-39e0024c8ace&korePlacement=15&koreSubPlacement=1&clickEventId=06feba20-b8d4-11f0-8202-39e0024c8ace&korePlacement=15&koreSubPlacement=1&traceId=mhjdca63'),
+          onPress: () =>
+            openProductLink(
+              'https://www.coupang.com/vp/products/8645037348?itemId=25558036482&vendorItemId=84656604794&sourceType=srp_product_ads&clickEventId=06feba20-b8d4-11f0-8202-39e0024c8ace&korePlacement=15&koreSubPlacement=1&traceId=mhjdca63',
+            ),
         },
         {
           text: '칫솔',
-          onPress: () => openProductLink('https://hetras.co.kr/product/premium-scaling-toothbrush-21ea/219'),
+          onPress: () =>
+            openProductLink(
+              'https://hetras.co.kr/product/premium-scaling-toothbrush-21ea/219',
+            ),
         },
       ],
     );
