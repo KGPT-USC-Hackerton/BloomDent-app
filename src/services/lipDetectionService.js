@@ -1,10 +1,12 @@
+import Config from 'react-native-config';
+
 /**
  * 입술 검출 API 서비스
  * FastAPI 서버의 /detect-lips 엔드포인트 호출
  */
 
-// FastAPI 서버 주소 (로컬 개발용)
-const LIP_DETECTION_API_URL = 'http://192.168.0.61:8000';
+// FastAPI 서버 주소
+const LIP_DETECTION_API_URL = Config.LIP_DETECTION_API_URL;
 
 /**
  * 이미지에서 입술 랜드마크 검출

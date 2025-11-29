@@ -1,5 +1,7 @@
+import Config from 'react-native-config';
+
 // API 기본 설정
-const API_BASE_URL = 'http://192.168.0.61:3001/api';
+const API_BASE_URL = Config.API_BASE_URL;
 
 // 공통 fetch 함수
 export const apiRequest = async (endpoint, options = {}) => {
@@ -171,6 +173,7 @@ export const uploadFormData = async (endpoint, formData, options = {}) => {
   };
 
   return makeRequest();
+};
   
   
 // ============================================
@@ -251,4 +254,3 @@ export const createAppointment = async (appointmentData) => {
     throw error;
   }
 };
-
