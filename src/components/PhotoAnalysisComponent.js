@@ -22,6 +22,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
   const [pickerError, setPickerError] = useState(null);
   const [cameraModalVisible, setCameraModalVisible] = useState(false);
   const [currentCameraPosition, setCurrentCameraPosition] = useState(null);
+  const [isPhotoSessionStarted, setIsPhotoSessionStarted] = useState(false);
 
   const resetState = useCallback(() => {
     setImages([]);
@@ -29,6 +30,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
     setIsAnalyzing(false);
     setUploadProgress(0);
     setPickerError(null);
+    setIsPhotoSessionStarted(false);
     onReset?.();
   }, [onReset]);
 
@@ -394,8 +396,26 @@ export default function PhotoAnalysisComponent({ onReset }) {
             </View>
           )}
 
+          {/* 구강사진 촬영 시작 카드 */}
+          {!allCompleted && !isPhotoSessionStarted && images.length === 0 && (
+            <View style={styles.startCard}>
+              <View style={styles.startCardContent}>
+                <Text style={styles.startCardTitle}>구강 사진 촬영</Text>
+                <Text style={styles.startCardSubtitle}>
+                  윗니, 아랫니, 앞니 사진을 촬영하여{'\n'}AI 분석을 받아보세요
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setIsPhotoSessionStarted(true)}
+                  style={styles.startButton}
+                >
+                  <Text style={styles.startButtonText}>촬영 시작하기</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* 이미지 촬영 섹션 */}
-          {!allCompleted && (
+          {!allCompleted && (isPhotoSessionStarted || images.length > 0) && (
             <View style={styles.photoSection}>
               <Text style={styles.sectionTitle}>구강 사진 촬영</Text>
               <Text style={styles.sectionSubtitle}>
@@ -635,6 +655,53 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#3b82f6',
     borderRadius: 4,
+  },
+  startCard: {
+    marginBottom: 24,
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  startCardContent: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  startCardTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  startCardSubtitle: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  startButton: {
+    backgroundColor: '#3b82f6',
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 12,
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  startButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   photoSection: {
     marginBottom: 24,
