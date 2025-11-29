@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, ScrollView, Modal } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { uploadImage, pollAnalysisStatus } from '../services/imageService';
+import { uploadImage, pollAnalysisStatus, deleteImage } from '../services/imageService';
 import { getUser } from '../utils/storage';
 import CameraGuideComponent from './CameraGuideComponent';
 
@@ -23,6 +23,13 @@ export default function PhotoAnalysisComponent({ onReset }) {
   const [cameraModalVisible, setCameraModalVisible] = useState(false);
   const [currentCameraPosition, setCurrentCameraPosition] = useState(null);
   const [isPhotoSessionStarted, setIsPhotoSessionStarted] = useState(false);
+  const [lastCapturedImageId, setLastCapturedImageId] = useState(null); // 마지막으로 촬영한 이미지의 uploadedImageId
+  const imagesRef = useRef([]); // 최신 images 상태 추적용
+  
+  // images 상태가 변경될 때마다 ref 업데이트
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
 
   const resetState = useCallback(() => {
     setImages([]);
@@ -331,20 +338,68 @@ export default function PhotoAnalysisComponent({ onReset }) {
   );
 
   const handleCameraCapture = useCallback(
-    (asset) => {
+    async (asset) => {
       setCameraModalVisible(false);
       if (asset && currentCameraPosition) {
-        addImage(asset, currentCameraPosition);
+        const imageId = Date.now();
+        // 이미지 추가 전에 ID 저장
+        setLastCapturedImageId(imageId);
+        await addImage(asset, currentCameraPosition);
       }
       setCurrentCameraPosition(null);
     },
     [addImage, currentCameraPosition]
   );
 
-  const handleCameraClose = useCallback(() => {
+  const handleCameraClose = useCallback(async () => {
+    // 마지막으로 촬영한 이미지가 있으면 삭제
+    if (lastCapturedImageId) {
+      // 업로드 완료를 기다리기 (최대 5초)
+      let attempts = 0;
+      const maxAttempts = 20; // 0.25초 간격으로 20회 = 5초
+      
+      const checkAndDelete = async () => {
+        const lastImage = imagesRef.current.find(img => img.id === lastCapturedImageId);
+        
+        if (lastImage && lastImage.uploadedImageId) {
+          // 업로드 완료 - 삭제
+          try {
+            await deleteImage(lastImage.uploadedImageId);
+            console.log('✅ 이미지 삭제 완료 (Cloudinary & DB):', lastImage.uploadedImageId);
+            // 로컬 상태에서도 제거
+            setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+          } catch (error) {
+            console.error('❌ 이미지 삭제 오류:', error);
+            // 삭제 실패해도 로컬 상태에서 제거
+            setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+          }
+          setLastCapturedImageId(null);
+          return true;
+        } else if (lastImage && lastImage.status === 'failed') {
+          // 업로드 실패 - 로컬 상태에서만 제거
+          setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+          setLastCapturedImageId(null);
+          return true;
+        } else if (attempts < maxAttempts) {
+          // 아직 업로드 중 - 다시 확인
+          attempts++;
+          setTimeout(checkAndDelete, 250);
+          return false;
+        } else {
+          // 타임아웃 - 로컬 상태에서만 제거
+          console.warn('⚠️ 이미지 업로드 완료 대기 시간 초과 - 로컬에서만 제거');
+          setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+          setLastCapturedImageId(null);
+          return true;
+        }
+      };
+      
+      await checkAndDelete();
+    }
+    
     setCameraModalVisible(false);
     setCurrentCameraPosition(null);
-  }, []);
+  }, [lastCapturedImageId]);
 
   const handleAddPhoto = useCallback((position) => {
     if (images.length >= TOTAL_IMAGES) {
@@ -417,10 +472,22 @@ export default function PhotoAnalysisComponent({ onReset }) {
           {/* 이미지 촬영 섹션 */}
           {!allCompleted && (isPhotoSessionStarted || images.length > 0) && (
             <View style={styles.photoSection}>
-              <Text style={styles.sectionTitle}>구강 사진 촬영</Text>
-              <Text style={styles.sectionSubtitle}>
-                각 위치별로 사진을 촬영해주세요 ({images.length}/{TOTAL_IMAGES})
-              </Text>
+              <View style={styles.sectionHeader}>
+                {images.length === 0 && (
+                  <TouchableOpacity
+                    onPress={() => setIsPhotoSessionStarted(false)}
+                    style={styles.backButton}
+                  >
+                    <Text style={styles.backButtonText}>← 뒤로</Text>
+                  </TouchableOpacity>
+                )}
+                <View style={styles.sectionTitleContainer}>
+                  <Text style={styles.sectionTitle}>구강 사진 촬영</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    각 위치별로 사진을 촬영해주세요 ({images.length}/{TOTAL_IMAGES})
+                  </Text>
+                </View>
+              </View>
               
               <View style={styles.positionButtons}>
                 {['upper', 'lower', 'front'].map((position) => {
@@ -705,6 +772,28 @@ const styles = StyleSheet.create({
   },
   photoSection: {
     marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginRight: 12,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  sectionTitleContainer: {
+    flex: 1,
   },
   sectionTitle: {
     fontSize: 20,

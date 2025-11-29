@@ -15,6 +15,23 @@ const LIP_DETECTION_API_URL = Config.LIP_DETECTION_API_URL;
  */
 export const detectLips = async (imageUri) => {
   try {
+    // API URL 확인
+    if (!LIP_DETECTION_API_URL) {
+      console.error('❌ LIP_DETECTION_API_URL이 설정되지 않았습니다.');
+      throw new Error('입술 검출 API URL이 설정되지 않았습니다.');
+    }
+
+    // 이미지 URI 확인
+    if (!imageUri) {
+      console.error('❌ 이미지 URI가 제공되지 않았습니다.');
+      throw new Error('이미지 경로가 필요합니다.');
+    }
+
+    console.log('🔍 입술 검출 시작:', {
+      apiUrl: `${LIP_DETECTION_API_URL}/detect-lips`,
+      imageUri: imageUri.substring(0, 50) + '...',
+    });
+
     // React Native에서 파일을 FormData로 전송
     const formData = new FormData();
     
@@ -28,31 +45,93 @@ export const detectLips = async (imageUri) => {
       name: fileName,
     });
 
+    // 네트워크 타임아웃 설정 (30초)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     const response = await fetch(`${LIP_DETECTION_API_URL}/detect-lips`, {
       method: 'POST',
       body: formData,
+      signal: controller.signal,
       headers: {
         // FormData 사용 시 Content-Type은 자동으로 설정됨
       },
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      throw new Error(`서버 오류: ${response.status}`);
+      const errorText = await response.text().catch(() => '알 수 없는 오류');
+      console.error('❌ 서버 응답 오류:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+      });
+      throw new Error(`서버 오류: ${response.status} - ${response.statusText}`);
     }
 
     const data = await response.json();
-    return {
+    
+    // 응답 데이터 검증
+    if (!data || typeof data !== 'object') {
+      console.error('❌ 잘못된 응답 형식:', data);
+      throw new Error('서버에서 잘못된 응답을 받았습니다.');
+    }
+
+    const result = {
       success: true,
       data: {
-        lipPoints: data.lipPoints || [],
-        faceDetected: data.faceDetected || false,
-        width: data.width || 0,
-        height: data.height || 0,
-        pointCount: data.pointCount || 0,
+        lipPoints: Array.isArray(data.lipPoints) ? data.lipPoints : [],
+        faceDetected: Boolean(data.faceDetected),
+        width: Number(data.width) || 0,
+        height: Number(data.height) || 0,
+        pointCount: Number(data.pointCount) || (Array.isArray(data.lipPoints) ? data.lipPoints.length : 0),
       },
     };
+
+    console.log('✅ 입술 검출 완료:', {
+      faceDetected: result.data.faceDetected,
+      pointCount: result.data.pointCount,
+      imageSize: `${result.data.width}x${result.data.height}`,
+    });
+
+    return result;
   } catch (error) {
-    console.error('입술 검출 오류:', error);
+    // AbortError는 타임아웃
+    if (error.name === 'AbortError') {
+      console.error('❌ 입술 검출 타임아웃 (30초 초과)');
+      return {
+        success: false,
+        error: '요청 시간이 초과되었습니다. 네트워크 연결을 확인해주세요.',
+        data: {
+          lipPoints: [],
+          faceDetected: false,
+          width: 0,
+          height: 0,
+        },
+      };
+    }
+
+    // 네트워크 오류
+    if (error.message === 'Network request failed' || error.message?.includes('Network')) {
+      console.error('❌ 네트워크 오류:', error.message);
+      return {
+        success: false,
+        error: '네트워크 연결을 확인해주세요.',
+        data: {
+          lipPoints: [],
+          faceDetected: false,
+          width: 0,
+          height: 0,
+        },
+      };
+    }
+
+    console.error('❌ 입술 검출 오류:', {
+      message: error.message,
+      stack: error.stack,
+    });
+
     return {
       success: false,
       error: error.message || '입술 검출에 실패했습니다.',
