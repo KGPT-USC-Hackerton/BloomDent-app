@@ -10,9 +10,9 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { setTempSignUpData } from '../utils/storage';
+import { register } from '../services/authService';
 
-const SignUpScreen = ({ onNavigateToSurvey, onBackToLogin }) => {
+const SignUpScreen = ({ onSignUpComplete, onBackToLogin }) => {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -67,16 +67,35 @@ const SignUpScreen = ({ onNavigateToSurvey, onBackToLogin }) => {
       // 비밀번호 확인 필드 제거
       const { passwordConfirm, ...signUpData } = formData;
       
-      // 임시로 회원가입 정보 저장 (설문 완료 후 DB에 저장)
-      await setTempSignUpData(signUpData);
+      // 회원가입 API 호출 (설문 답변 없이)
+      const response = await register(signUpData);
       
-      // 설문 화면으로 이동
-      if (onNavigateToSurvey) {
-        onNavigateToSurvey();
+      if (response.success) {
+        Alert.alert('성공', '회원가입이 완료되었습니다.', [
+          {
+            text: '확인',
+            onPress: () => {
+              // 회원가입 완료 후 로그인 상태로 전환
+              if (onSignUpComplete) {
+                onSignUpComplete();
+              }
+            },
+          },
+        ]);
       }
     } catch (error) {
-      console.error('회원가입 정보 저장 오류:', error);
-      Alert.alert('오류', '회원가입 정보 저장 중 오류가 발생했습니다.');
+      console.error('회원가입 오류:', error);
+      let errorMessage = '회원가입 중 오류가 발생했습니다.';
+      
+      if (error.status === 409) {
+        errorMessage = error.message || '이미 사용 중인 아이디입니다.';
+      } else if (error.status === 400) {
+        errorMessage = error.message || '입력 정보를 확인해주세요.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert('오류', errorMessage);
     } finally {
       setLoading(false);
     }
