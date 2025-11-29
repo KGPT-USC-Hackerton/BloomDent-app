@@ -81,11 +81,11 @@ function App() {
     setIsNewUser(false);
   };
 
-  const handleNavigateToSurvey = () => {
-    // 회원가입 후 설문 화면으로 이동
+  const handleSignUpComplete = () => {
+    // 회원가입 완료 후 로그인 상태로 전환
     setShowSignUp(false);
-    setShowSurvey(true);
-    setIsNewUser(true);
+    setIsLoggedIn(true);
+    setSurveyCompleted(true);
   };
 
   const handleSurveyComplete = (answers) => {
@@ -110,7 +110,7 @@ function App() {
     if (showSignUp) {
       return (
         <SignUpScreen
-          onNavigateToSurvey={handleNavigateToSurvey}
+          onSignUpComplete={handleSignUpComplete}
           onBackToLogin={() => setShowSignUp(false)}
         />
       );

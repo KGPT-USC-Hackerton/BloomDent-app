@@ -7,11 +7,13 @@ import {
   Dimensions,
   Alert,
   ActivityIndicator,
+  Image, // ✅ 실제 원본 크기 계산용
 } from 'react-native';
 import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { detectLips } from '../services/lipDetectionService';
+import ImageManipulator from 'react-native-image-manipulator';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -20,6 +22,16 @@ const POSITION_LABELS = {
   lower: '아랫니',
   front: '앞니',
 };
+
+// ✅ 실제 이미지 크기 가져오기 (ImageManipulator가 사용하는 원본 기준)
+const getRealImageSize = uri =>
+  new Promise((resolve, reject) => {
+    Image.getSize(
+      uri,
+      (width, height) => resolve({ width, height }),
+      error => reject(error),
+    );
+  });
 
 export default function CameraGuideComponent({ position, onCapture, onClose }) {
   const camera = useRef(null);
@@ -30,15 +42,15 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   const device = useCameraDevice('front');
   const insets = useSafeAreaInsets();
   
-  // 입술 검출 관련 상태
   const [lipPoints, setLipPoints] = useState([]);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [isDetecting, setIsDetecting] = useState(false);
+  const [showFlash, setShowFlash] = useState(false);
   const detectionIntervalRef = useRef(null);
-  const uploadIntervalRef = useRef(null);
   const isProcessingRef = useRef(false);
-  const lastPhotoRef = useRef(null); // 마지막 촬영한 사진 저장
-  const autoCaptureTriggeredRef = useRef(false); // 자동 촬영 트리거 플래그
+  const lastPhotoRef = useRef(null);
+  const autoCaptureTriggeredRef = useRef(false);
+  const alignmentTimerRef = useRef(null);
 
   const checkPermission = useCallback(async () => {
     if (!hasPermission) {
@@ -55,62 +67,13 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
   useEffect(() => {
     checkPermission();
-    // 컴포넌트 언마운트 시 인터벌 정리
     return () => {
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-      }
-      if (uploadIntervalRef.current) {
-        clearInterval(uploadIntervalRef.current);
-      }
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (alignmentTimerRef.current) clearTimeout(alignmentTimerRef.current);
     };
   }, [checkPermission]);
 
-  // 1초마다 사진 촬영 (셔터음 무음)
-  const capturePhoto = useCallback(async () => {
-    if (!camera.current || isProcessingRef.current || !hasPermission || !isReady) {
-      return;
-    }
-
-    // 이미 처리 중이면 스킵
-    if (isProcessingRef.current) {
-      return;
-    }
-
-    try {
-      isProcessingRef.current = true;
-
-      // 빠른 사진 촬영 (셔터음 무음)
-      const photo = await camera.current.takePhoto({
-        qualityPrioritization: 'speed',
-        flash: 'off',
-        enableShutterSound: false, // 셔터음 무음
-      });
-
-      const photoPath = photo.path.startsWith('file://') 
-        ? photo.path 
-        : `file://${photo.path}`;
-      
-      // 마지막 촬영한 사진 저장
-      lastPhotoRef.current = photoPath;
-      
-      console.log('📸 사진 촬영 완료 (무음)');
-    } catch (error) {
-      // 에러가 발생해도 조용히 처리 (너무 자주 로그 남기지 않음)
-      const errorCode = error?.code || error?.message || 'unknown';
-      if (errorCode !== -11803 && errorCode !== -16409) {
-        console.warn('사진 촬영 경고:', errorCode);
-      }
-      // 에러 발생 시에도 이전 사진 유지
-    } finally {
-      // 약간의 지연 후 다음 촬영 허용 (카메라 세션 안정화)
-      setTimeout(() => {
-        isProcessingRef.current = false;
-      }, 100);
-    }
-  }, [hasPermission, isReady]);
-
-  // 입술 포인트가 가이드라인과 일치하는지 확인
+  // 가이드라인 정렬 체크
   const checkAlignment = useCallback((points, pos) => {
     if (!points || points.length === 0) return false;
 
@@ -122,29 +85,212 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       height: guideStyle.height,
     };
 
-    // 입술 포인트의 중심점 계산
-    const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
-    const centerY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+    const lipMinX = Math.min(...points.map(p => p.x));
+    const lipMaxX = Math.max(...points.map(p => p.x));
+    const lipMinY = Math.min(...points.map(p => p.y));
+    const lipMaxY = Math.max(...points.map(p => p.y));
+    const lipWidth = lipMaxX - lipMinX;
+    const lipHeight = lipMaxY - lipMinY;
+    const lipArea = lipWidth * lipHeight;
 
-    // 중심점이 가이드라인 내부에 있는지 확인 (여유 공간 20% 허용)
-    const margin = 0.2;
-    const minX = guideBounds.x - guideBounds.width * margin;
-    const maxX = guideBounds.x + guideBounds.width * (1 + margin);
-    const minY = guideBounds.y - guideBounds.height * margin;
-    const maxY = guideBounds.y + guideBounds.height * (1 + margin);
+    const lipCenterX = (lipMinX + lipMaxX) / 2;
+    const lipCenterY = (lipMinY + lipMaxY) / 2;
 
-    const isCenterInGuide = 
-      centerX >= minX && centerX <= maxX &&
-      centerY >= minY && centerY <= maxY;
+    const guideCenterX = guideBounds.x + guideBounds.width / 2;
+    const guideCenterY = guideBounds.y + guideBounds.height / 2;
 
-    // 포인트 중 일정 비율 이상이 가이드라인 내부에 있는지 확인
-    const pointsInGuide = points.filter(p => 
-      p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY
-    ).length;
-    const pointsRatio = pointsInGuide / points.length;
+    const overlapMinX = Math.max(lipMinX, guideBounds.x);
+    const overlapMaxX = Math.min(lipMaxX, guideBounds.x + guideBounds.width);
+    const overlapMinY = Math.max(lipMinY, guideBounds.y);
+    const overlapMaxY = Math.min(lipMaxY, guideBounds.y + guideBounds.height);
 
-    // 중심점이 가이드 내부에 있고, 60% 이상의 포인트가 가이드 내부에 있으면 정렬됨
-    return isCenterInGuide && pointsRatio >= 0.6;
+    const overlapWidth = Math.max(0, overlapMaxX - overlapMinX);
+    const overlapHeight = Math.max(0, overlapMaxY - overlapMinY);
+    const overlapArea = overlapWidth * overlapHeight;
+
+    const guideArea = guideBounds.width * guideBounds.height;
+    const unionArea = lipArea + guideArea - overlapArea;
+    const overlapRatio = unionArea > 0 ? overlapArea / unionArea : 0;
+    const lipOverlapRatio = lipArea > 0 ? overlapArea / lipArea : 0;
+    const guideOverlapRatio = guideArea > 0 ? overlapArea / guideArea : 0;
+
+    const centerDistanceX = Math.abs(lipCenterX - guideCenterX) / guideBounds.width;
+    const centerDistanceY = Math.abs(lipCenterY - guideCenterY) / guideBounds.height;
+    const normalizedCenterDistance = Math.sqrt(
+      centerDistanceX * centerDistanceX + centerDistanceY * centerDistanceY
+    );
+
+    const isOptimalAlignment = 
+      overlapRatio >= 0.4 &&
+      lipOverlapRatio >= 0.5 &&
+      guideOverlapRatio >= 0.5 &&
+      normalizedCenterDistance <= 0.3;
+
+    if (isOptimalAlignment) {
+      console.log('🎯 최적 겹침 조건:', {
+        overlapRatio: (overlapRatio * 100).toFixed(1) + '%',
+        lipOverlapRatio: (lipOverlapRatio * 100).toFixed(1) + '%',
+        guideOverlapRatio: (guideOverlapRatio * 100).toFixed(1) + '%',
+        centerDistance: (normalizedCenterDistance * 100).toFixed(1) + '%',
+      });
+    }
+
+    return isOptimalAlignment;
+  }, []);
+
+  // 플래시 효과
+  const triggerFlash = useCallback(() => {
+    setShowFlash(true);
+    setTimeout(() => setShowFlash(false), 150);
+  }, []);
+
+  // ✅ 입술 영역 크롭 (crop rectangle 완전 방어)
+  const cropLipArea = useCallback(async (photoPath, rawWidth, rawHeight) => {
+    try {
+      if (!ImageManipulator || typeof ImageManipulator.manipulate !== 'function') {
+        console.warn('⚠️ ImageManipulator 사용 불가 - 원본 반환');
+        return photoPath;
+      }
+
+      let imageWidth = rawWidth;
+      let imageHeight = rawHeight;
+
+      // 실제 원본 크기 우선 사용
+      try {
+        const realSize = await getRealImageSize(photoPath);
+        imageWidth = realSize.width;
+        imageHeight = realSize.height;
+      } catch (e) {
+        console.warn('⚠️ Image.getSize 실패, VisionCamera width/height 사용', e?.message);
+      }
+
+      if (!imageWidth || !imageHeight) {
+        console.warn('⚠️ 이미지 크기 알 수 없음 - 원본 반환');
+        return photoPath;
+      }
+
+      const result = await detectLips(photoPath);
+      if (!result.success || !result.data?.faceDetected || !Array.isArray(result.data.lipPoints) || !result.data.lipPoints.length) {
+        console.warn('⚠️ 입술 검출 실패 - 원본 반환');
+        return photoPath;
+      }
+
+      const detectedLipPoints = result.data.lipPoints;
+      const detectedImageWidth = result.data.width || imageWidth;
+      const detectedImageHeight = result.data.height || imageHeight;
+
+      const scaleX = imageWidth / detectedImageWidth;
+      const scaleY = imageHeight / detectedImageHeight;
+
+      const scaledLipPoints = detectedLipPoints.map(p => ({
+        x: p.x * scaleX,
+        y: p.y * scaleY,
+      }));
+
+      const xs = scaledLipPoints.map(p => p.x);
+      const ys = scaledLipPoints.map(p => p.y);
+      const minX = Math.min(...xs);
+      const maxX = Math.max(...xs);
+      const minY = Math.min(...ys);
+      const maxY = Math.max(...ys);
+
+      if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
+        console.warn('⚠️ 입술 좌표 이상 - 원본 반환');
+        return photoPath;
+      }
+
+      const lipWidth = maxX - minX;
+      const lipHeight = maxY - minY;
+      const lipCenterX = (minX + maxX) / 2;
+      const lipCenterY = (minY + maxY) / 2;
+
+      // 가로/세로 여유 공간을 다르게 설정 (세로는 더 작게)
+      const paddingRatioX = 0.2; // 가로 여유 공간 20%
+      const paddingRatioY = 0.1; // 세로 여유 공간 10% (더 타이트하게)
+      const paddingX = lipWidth * paddingRatioX;
+      const paddingY = lipHeight * paddingRatioY;
+      const minCropSize = 80;
+
+      const desiredCropWidth = Math.max(lipWidth + 2 * paddingX, minCropSize);
+      const desiredCropHeight = Math.max(lipHeight + 2 * paddingY, minCropSize);
+
+      let cropX = lipCenterX - desiredCropWidth / 2;
+      let cropY = lipCenterY - desiredCropHeight / 2;
+
+      // 경계 안으로 1차 클램프
+      cropX = Math.max(0, Math.min(cropX, imageWidth - desiredCropWidth));
+      cropY = Math.max(0, Math.min(cropY, imageHeight - desiredCropHeight));
+
+      let cropWidth = Math.min(desiredCropWidth, imageWidth - cropX);
+      let cropHeight = Math.min(desiredCropHeight, imageHeight - cropY);
+
+      // 너무 작으면 최소값 보장
+      if (cropWidth < 1 || cropHeight < 1) {
+        console.warn('⚠️ 크롭 영역 너무 작음 - 원본 반환');
+        return photoPath;
+      }
+
+      // 정수로 반올림 후 다시 한 번 경계 체크
+      const originX = Math.floor(cropX);
+      const originY = Math.floor(cropY);
+      const width = Math.floor(cropWidth);
+      const height = Math.floor(cropHeight);
+
+      const isValidCrop =
+        originX >= 0 &&
+        originY >= 0 &&
+        width > 0 &&
+        height > 0 &&
+        originX + width <= imageWidth &&
+        originY + height <= imageHeight;
+
+      if (!isValidCrop) {
+        console.warn('⚠️ 최종 크롭 영역이 이미지 밖입니다 - 원본 반환', {
+          originX,
+          originY,
+          width,
+          height,
+          imageWidth,
+          imageHeight,
+        });
+        return photoPath;
+      }
+
+      console.log('✂️ 최종 크롭 영역:', {
+        originX,
+        originY,
+        width,
+        height,
+        imageWidth,
+        imageHeight,
+      });
+
+      const manipulatedImage = await ImageManipulator.manipulate(
+        photoPath,
+        [
+          {
+            crop: {
+              originX,
+              originY,
+              width,
+              height,
+            },
+          },
+        ],
+        { compress: 0.9, format: 'jpeg' }
+      );
+
+      if (!manipulatedImage?.uri) {
+        console.warn('⚠️ 크롭 결과 URI 없음 - 원본 반환');
+        return photoPath;
+      }
+
+      console.log('✅ 입술 영역 크롭 완료:', manipulatedImage.uri);
+      return manipulatedImage.uri;
+    } catch (error) {
+      console.error('❌ 입술 영역 크롭 오류:', error);
+      return photoPath;
+    }
   }, []);
 
   // 자동 촬영 실행
@@ -156,8 +302,9 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
     try {
       autoCaptureTriggeredRef.current = true;
       setIsCapturing(true);
-      
       console.log('🤖 자동 촬영 시작 - 구도 적합');
+
+      triggerFlash();
 
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'quality',
@@ -168,80 +315,162 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       const photoPath = photo.path.startsWith('file://') 
         ? photo.path 
         : `file://${photo.path}`;
-      
+
+      const croppedPath = await cropLipArea(photoPath, photo.width, photo.height);
+
+      const cropRatio = croppedPath !== photoPath ? 0.7 : 1.0;
       const asset = {
-        uri: photoPath,
+        uri: croppedPath,
         type: 'image/jpeg',
         fileName: `dental_${position}_${Date.now()}.jpg`,
-        width: photo.width,
-        height: photo.height,
+        width: Math.round(photo.width * cropRatio),
+        height: Math.round(photo.height * cropRatio),
       };
 
-      console.log('✅ 자동 촬영 완료');
+      console.log('✅ 자동 촬영 완료 (입술 영역 크롭)');
+      if (alignmentTimerRef.current) {
+        clearTimeout(alignmentTimerRef.current);
+        alignmentTimerRef.current = null;
+      }
+
       onCapture(asset);
     } catch (error) {
       console.error('❌ 자동 촬영 오류:', error);
-      autoCaptureTriggeredRef.current = false; // 에러 시 재시도 허용
+      autoCaptureTriggeredRef.current = false;
+      if (alignmentTimerRef.current) {
+        clearTimeout(alignmentTimerRef.current);
+        alignmentTimerRef.current = null;
+      }
     } finally {
       setIsCapturing(false);
     }
-  }, [isReady, isCapturing, position, onCapture]);
+  }, [isReady, isCapturing, position, onCapture, triggerFlash, cropLipArea]);
 
-  // 0.5초마다 사진 전송 (입술 검출)
-  const uploadAndDetectLips = useCallback(async () => {
-    if (!lastPhotoRef.current) return;
+  // 0.5초마다 사진 촬영 및 입술 검출
+  const captureAndUploadPhoto = useCallback(async () => {
+    if (!camera.current || isProcessingRef.current || !hasPermission || !isReady) return;
+
+    if (isProcessingRef.current) return;
 
     try {
-      setIsDetecting(true);
-      
-      // 입술 검출 API 호출
-      const result = await detectLips(lastPhotoRef.current);
-      
-      if (result.success && result.data.faceDetected) {
-        const scaleX = SCREEN_WIDTH / result.data.width;
-        const scaleY = SCREEN_HEIGHT / result.data.height;
-        
-        // 화면 좌표로 변환
-        const screenPoints = result.data.lipPoints.map(point => ({
-          x: point.x * scaleX,
-          y: point.y * scaleY,
-        }));
+      isProcessingRef.current = true;
 
-        setLipPoints(screenPoints);
-        setImageSize({
-          width: result.data.width,
-          height: result.data.height,
-        });
-        
-        console.log('✅ 입술 검출 성공:', screenPoints.length, '개 포인트');
+      const photo = await camera.current.takePhoto({
+        qualityPrioritization: 'speed',
+        flash: 'off',
+        enableShutterSound: false,
+      });
 
-        // 입술 포인트가 가이드라인과 일치하는지 확인
-        if (screenPoints.length > 0 && checkAlignment(screenPoints, position)) {
-          console.log('🎯 구도 적합 - 자동 촬영 트리거');
-          // 약간의 지연 후 자동 촬영 (안정성 향상)
-          setTimeout(() => {
-            triggerAutoCapture();
-          }, 300);
+      const photoPath = photo.path.startsWith('file://')
+        ? photo.path
+        : `file://${photo.path}`;
+
+      lastPhotoRef.current = photoPath;
+      console.log('📸 사진 촬영 완료 (무음)');
+
+      try {
+        setIsDetecting(true);
+        const result = await detectLips(photoPath);
+
+        if (result.success && result.data.faceDetected) {
+          setLipPoints(result.data.lipPoints);
+          setImageSize({
+            width: result.data.width,
+            height: result.data.height,
+          });
+
+          const scaleX = SCREEN_WIDTH / result.data.width;
+          const scaleY = SCREEN_HEIGHT / result.data.height;
+          const screenPoints = result.data.lipPoints.map(point => ({
+            x: point.x * scaleX,
+            y: point.y * scaleY,
+          }));
+
+          if (screenPoints.length > 0 && checkAlignment(screenPoints, position)) {
+            if (!alignmentTimerRef.current) {
+              console.log('🎯 구도 적합 - 3초 유지 대기 중...');
+              alignmentTimerRef.current = setTimeout(() => {
+                console.log('✅ 3초 유지 완료 - 자동 촬영 실행');
+                alignmentTimerRef.current = null;
+                triggerAutoCapture();
+              }, 3000);
+            }
+          } else {
+            if (alignmentTimerRef.current) {
+              console.log('⚠️ 구도 불일치 - 타이머 리셋');
+              clearTimeout(alignmentTimerRef.current);
+              alignmentTimerRef.current = null;
+            }
+          }
+        } else {
+          setLipPoints([]);
         }
-      } else {
-        // 얼굴이 감지되지 않으면 포인트 초기화
-        setLipPoints([]);
+      } catch (error) {
+        console.error('입술 검출 오류:', error);
+      } finally {
+        setIsDetecting(false);
       }
     } catch (error) {
-      console.error('입술 검출 오류:', error);
-      // 에러 발생 시 조용히 처리 (사용자에게 알리지 않음)
+      const errorCode = error?.code || error?.message || 'unknown';
+      if (errorCode !== -11803 && errorCode !== -16409) {
+        console.warn('사진 촬영 경고:', errorCode);
+      }
     } finally {
-      setIsDetecting(false);
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 100);
     }
-  }, [position, checkAlignment, triggerAutoCapture]);
+  }, [hasPermission, isReady, position, checkAlignment, triggerAutoCapture]);
 
-  // 카메라 준비 완료 핸들러
+  // 수동 촬영
+  const takePhoto = async () => {
+    console.log('📸 촬영 시도 - 카메라 준비:', isReady, '카메라 ref:', !!camera.current);
+
+    if (!camera.current || !isReady || isCapturing || !hasPermission) {
+      console.warn('⚠️ 촬영 불가 - 카메라가 준비되지 않음');
+      return;
+    }
+
+    try {
+      setIsCapturing(true);
+      triggerFlash();
+
+      const photo = await camera.current.takePhoto({
+        qualityPrioritization: 'speed',
+        flash: 'off',
+        enableShutterSound: false,
+      });
+
+      const photoPath = photo.path.startsWith('file://')
+        ? photo.path
+        : `file://${photo.path}`;
+
+      const croppedPath = await cropLipArea(photoPath, photo.width, photo.height);
+
+      const cropRatio = croppedPath !== photoPath ? 0.7 : 1.0;
+      const asset = {
+        uri: croppedPath,
+        type: 'image/jpeg',
+        fileName: `dental_${position}_${Date.now()}.jpg`,
+        width: Math.round(photo.width * cropRatio),
+        height: Math.round(photo.height * cropRatio),
+      };
+
+      console.log('✅ 수동 촬영 완료 (입술 영역 크롭)');
+      onCapture(asset);
+    } catch (error) {
+      console.error('❌ 촬영 오류:', error);
+      Alert.alert('오류', '사진 촬영에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
   const handleCameraReady = useCallback(() => {
     setIsReady(true);
     console.log('✅ 카메라 준비 완료');
   }, []);
 
-  // 카메라 활성화 지연 (안정성 향상)
   useEffect(() => {
     const timer = setTimeout(() => {
       console.log('🎬 카메라 활성화');
@@ -255,90 +484,26 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
     };
   }, []);
 
-  // 1초마다 사진 촬영 (셔터음 무음)
   useEffect(() => {
     if (hasPermission && device && isReady && isCameraActive) {
-      // 초기 지연 후 시작 (카메라 세션 안정화)
       const initialDelay = setTimeout(() => {
-        capturePhoto();
+        captureAndUploadPhoto();
       }, 500);
-      
-      // 1초마다 사진 촬영
+
       detectionIntervalRef.current = setInterval(() => {
-        capturePhoto();
-      }, 1000);
+        captureAndUploadPhoto();
+      }, 500);
 
       return () => {
         clearTimeout(initialDelay);
-        if (detectionIntervalRef.current) {
-          clearInterval(detectionIntervalRef.current);
-        }
+        if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
       };
     }
 
     return () => {
-      if (detectionIntervalRef.current) {
-        clearInterval(detectionIntervalRef.current);
-      }
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
     };
-  }, [hasPermission, device, isReady, isCameraActive, capturePhoto]);
-
-  // 0.5초마다 사진 전송 (입술 검출)
-  useEffect(() => {
-    if (hasPermission && device && isReady && isCameraActive) {
-      // 0.5초마다 사진 전송
-      uploadIntervalRef.current = setInterval(() => {
-        uploadAndDetectLips();
-      }, 500);
-    }
-
-    return () => {
-      if (uploadIntervalRef.current) {
-        clearInterval(uploadIntervalRef.current);
-      }
-    };
-  }, [hasPermission, device, isReady, isCameraActive, uploadAndDetectLips]);
-
-  const takePhoto = async () => {
-    console.log('📸 촬영 시도 - 카메라 준비:', isReady, '카메라 ref:', !!camera.current);
-
-    if (!camera.current || !isReady || isCapturing || !hasPermission) {
-      console.warn('⚠️ 촬영 불가 - 카메라가 준비되지 않음');
-      return;
-    }
-
-    try {
-      setIsCapturing(true);
-      
-      // 안정적인 기본 촬영 옵션
-      const photo = await camera.current.takePhoto({
-        qualityPrioritization: 'speed',
-        flash: 'off',
-        enableShutterSound: false,
-      });
-
-      console.log('📸 촬영 성공, 결과:', photo);
-
-      const photoPath = photo.path.startsWith('file://') 
-        ? photo.path 
-        : `file://${photo.path}`;
-      
-      const asset = {
-        uri: photoPath,
-        type: 'image/jpeg',
-        fileName: `dental_${position}_${Date.now()}.jpg`,
-        width: photo.width,
-        height: photo.height,
-      };
-
-      onCapture(asset);
-    } catch (error) {
-      console.error('❌ 촬영 오류:', error);
-      Alert.alert('오류', '사진 촬영에 실패했습니다. 다시 시도해주세요.');
-    } finally {
-      setIsCapturing(false);
-    }
-  };
+  }, [hasPermission, device, isReady, isCameraActive, captureAndUploadPhoto]);
 
   if (!hasPermission) {
     return (
@@ -353,7 +518,6 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
     );
   }
 
-  // device가 없으면 렌더링하지 않음 (nil 체크로 크래시 방지)
   if (!device) {
     return (
       <View style={styles.container}>
@@ -382,13 +546,13 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         />
       )}
 
-      {/* 가이드라인 오버레이 */}
+      {showFlash && <View style={styles.flashOverlay} />}
+
       <View style={styles.overlay}>
         <View style={styles.guideContainer}>
           <MouthGuide position={position} />
         </View>
-        
-        {/* 입술 랜드마크 오버레이 */}
+
         {lipPoints.length > 0 && imageSize.width > 0 && (
           <LipOverlay 
             lipPoints={lipPoints} 
@@ -399,9 +563,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         )}
       </View>
 
-      {/* 하단 컨트롤 */}
       <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}>
-        {/* 제목과 닫기 버튼 */}
         <View style={styles.bottomHeader}>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>{POSITION_LABELS[position]} 촬영</Text>
@@ -412,7 +574,6 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
           </TouchableOpacity>
         </View>
 
-        {/* 촬영 버튼 */}
         {isReady ? (
           <TouchableOpacity
             style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
@@ -432,31 +593,24 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   );
 }
 
-// 입술 랜드마크 오버레이 컴포넌트
+// ====== 오버레이 컴포넌트들 ======
+
 function LipOverlay({ lipPoints, imageSize, screenWidth, screenHeight }) {
-  // 이미지 크기와 화면 크기의 비율 계산
-  // 카메라 프리뷰는 화면을 채우지만, 실제 이미지 비율에 맞춰 조정 필요
   const scaleX = screenWidth / imageSize.width;
   const scaleY = screenHeight / imageSize.height;
-  
-  // 포인트를 화면 좌표로 변환
+
   const screenPoints = lipPoints.map(point => ({
     x: point.x * scaleX,
     y: point.y * scaleY,
   }));
 
-  // 입술 포인트를 Path로 연결
-  const pathData = screenPoints
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-    .join(' ') + ' Z';
+  const pathData =
+    screenPoints
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+      .join(' ') + ' Z';
 
   return (
-    <Svg
-      style={StyleSheet.absoluteFill}
-      width={screenWidth}
-      height={screenHeight}
-    >
-      {/* 입술 외곽선 */}
+    <Svg style={StyleSheet.absoluteFill} width={screenWidth} height={screenHeight}>
       <Path
         d={pathData}
         fill="none"
@@ -465,28 +619,19 @@ function LipOverlay({ lipPoints, imageSize, screenWidth, screenHeight }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* 입술 포인트 표시 */}
       {screenPoints.map((point, index) => (
-        <Circle
-          key={index}
-          cx={point.x}
-          cy={point.y}
-          r="3"
-          fill="#10b981"
-        />
+        <Circle key={index} cx={point.x} cy={point.y} r="3" fill="#10b981" />
       ))}
     </Svg>
   );
 }
 
-// 입 모양 가이드라인 컴포넌트
 function MouthGuide({ position }) {
   const guideStyles = getGuideStyle(position);
 
   return (
     <View style={styles.guideWrapper}>
       <View style={[styles.guideOutline, guideStyles]}>
-        {/* 윗니 가이드 */}
         {position === 'upper' && (
           <>
             <View style={[styles.upperTeethGuide, guideStyles.upperTeeth]} />
@@ -494,7 +639,6 @@ function MouthGuide({ position }) {
           </>
         )}
 
-        {/* 아랫니 가이드 */}
         {position === 'lower' && (
           <>
             <View style={[styles.lowerTeethGuide, guideStyles.lowerTeeth]} />
@@ -502,7 +646,6 @@ function MouthGuide({ position }) {
           </>
         )}
 
-        {/* 앞니 가이드 */}
         {position === 'front' && (
           <>
             <View style={[styles.frontTeethGuide, guideStyles.frontTeeth]} />
@@ -562,15 +705,15 @@ function getGuideStyle(position) {
 
     case 'front':
       return {
-        width: baseSize * 0.6,
-        height: baseSize * 0.8,
-        top: centerY - baseSize * 0.4,
-        left: centerX - baseSize * 0.3,
+        width: baseSize * 0.8,
+        height: baseSize * 0.5,
+        top: centerY - baseSize * 0.25,
+        left: centerX - baseSize * 0.4,
         borderRadius: baseSize * 0.2,
         frontTeeth: {
-          width: baseSize * 0.5,
-          height: baseSize * 0.6,
-          top: baseSize * 0.1,
+          width: baseSize * 0.7,
+          height: baseSize * 0.35,
+          top: baseSize * 0.075,
           left: baseSize * 0.05,
           borderRadius: baseSize * 0.15,
         },
@@ -744,5 +887,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
   },
+  flashOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'white',
+    zIndex: 9999,
+  },
 });
-
