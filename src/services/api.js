@@ -1,5 +1,5 @@
 // API 기본 설정
-const API_BASE_URL = 'http://210.119.33.3:3000/api';
+const API_BASE_URL = 'http://192.168.0.61:3001/api';
 
 // 공통 fetch 함수
 export const apiRequest = async (endpoint, options = {}) => {
@@ -12,7 +12,7 @@ export const apiRequest = async (endpoint, options = {}) => {
   // 토큰이 있으면 헤더에 추가 (나중에 JWT 토큰 사용 시)
   const token = await import('../utils/storage').then(m => m.getToken());
   if (token) {
-    defaultHeaders['Authorization'] = `Bearer ${token}`;
+    defaultHeaders.Authorization = `Bearer ${token}`;
   }
 
   const config = {
@@ -81,5 +81,54 @@ export const del = (endpoint, options = {}) => {
     ...options,
     method: 'DELETE',
   });
+};
+
+// FormData 업로드 (이미지 등)
+export const uploadFormData = async (endpoint, formData, options = {}) => {
+  const url = `${API_BASE_URL}${endpoint}`;
+  
+  const defaultHeaders = {};
+  
+  // 토큰이 있으면 헤더에 추가
+  const token = await import('../utils/storage').then(m => m.getToken());
+  if (token) {
+    defaultHeaders.Authorization = `Bearer ${token}`;
+  }
+
+  const config = {
+    ...options,
+    method: 'POST',
+    headers: {
+      ...defaultHeaders,
+      ...options.headers,
+      // FormData 사용 시 Content-Type은 자동으로 설정되므로 명시하지 않음
+    },
+    body: formData,
+  };
+
+  try {
+    const response = await fetch(url, config);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw {
+        status: response.status,
+        message: data.message || '업로드 중 오류가 발생했습니다.',
+        data: data,
+      };
+    }
+
+    return data;
+  } catch (error) {
+    // 네트워크 오류 처리
+    if (error.message === 'Network request failed') {
+      throw {
+        status: 0,
+        message: '네트워크 연결을 확인해주세요.',
+        data: null,
+      };
+    }
+    throw error;
+  }
 };
 
