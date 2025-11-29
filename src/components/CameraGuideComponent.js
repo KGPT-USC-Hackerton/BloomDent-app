@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,7 +23,8 @@ const POSITION_LABELS = {
 
 export default function CameraGuideComponent({ position, onCapture, onClose }) {
   const camera = useRef(null);
-  const [isActive, setIsActive] = useState(true);
+  const [isReady, setIsReady] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('front');
@@ -34,7 +35,10 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [isDetecting, setIsDetecting] = useState(false);
   const detectionIntervalRef = useRef(null);
+  const uploadIntervalRef = useRef(null);
   const isProcessingRef = useRef(false);
+  const lastPhotoRef = useRef(null); // 마지막 촬영한 사진 저장
+  const autoCaptureTriggeredRef = useRef(false); // 자동 촬영 트리거 플래그
 
   const checkPermission = useCallback(async () => {
     if (!hasPermission) {
@@ -56,34 +60,169 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
       }
+      if (uploadIntervalRef.current) {
+        clearInterval(uploadIntervalRef.current);
+      }
     };
   }, [checkPermission]);
 
-  // 입술 검출을 위한 프레임 캡처 및 전송
-  const captureAndDetectLips = useCallback(async () => {
-    if (!camera.current || isProcessingRef.current || !hasPermission) return;
+  // 1초마다 사진 촬영 (셔터음 무음)
+  const capturePhoto = useCallback(async () => {
+    if (!camera.current || isProcessingRef.current || !hasPermission || !isReady) {
+      return;
+    }
+
+    // 이미 처리 중이면 스킵
+    if (isProcessingRef.current) {
+      return;
+    }
 
     try {
       isProcessingRef.current = true;
-      setIsDetecting(true);
 
-      // 빠른 사진 촬영 (저품질로 성능 향상)
+      // 빠른 사진 촬영 (셔터음 무음)
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'speed',
         flash: 'off',
+        enableShutterSound: false, // 셔터음 무음
       });
 
-      const photoPath = Platform.OS === 'ios' ? `file://${photo.path}` : `file://${photo.path}`;
+      const photoPath = photo.path.startsWith('file://') 
+        ? photo.path 
+        : `file://${photo.path}`;
+      
+      // 마지막 촬영한 사진 저장
+      lastPhotoRef.current = photoPath;
+      
+      console.log('📸 사진 촬영 완료 (무음)');
+    } catch (error) {
+      // 에러가 발생해도 조용히 처리 (너무 자주 로그 남기지 않음)
+      const errorCode = error?.code || error?.message || 'unknown';
+      if (errorCode !== -11803 && errorCode !== -16409) {
+        console.warn('사진 촬영 경고:', errorCode);
+      }
+      // 에러 발생 시에도 이전 사진 유지
+    } finally {
+      // 약간의 지연 후 다음 촬영 허용 (카메라 세션 안정화)
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 100);
+    }
+  }, [hasPermission, isReady]);
+
+  // 입술 포인트가 가이드라인과 일치하는지 확인
+  const checkAlignment = useCallback((points, pos) => {
+    if (!points || points.length === 0) return false;
+
+    const guideStyle = getGuideStyle(pos);
+    const guideBounds = {
+      x: guideStyle.left,
+      y: guideStyle.top,
+      width: guideStyle.width,
+      height: guideStyle.height,
+    };
+
+    // 입술 포인트의 중심점 계산
+    const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+    const centerY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+
+    // 중심점이 가이드라인 내부에 있는지 확인 (여유 공간 20% 허용)
+    const margin = 0.2;
+    const minX = guideBounds.x - guideBounds.width * margin;
+    const maxX = guideBounds.x + guideBounds.width * (1 + margin);
+    const minY = guideBounds.y - guideBounds.height * margin;
+    const maxY = guideBounds.y + guideBounds.height * (1 + margin);
+
+    const isCenterInGuide = 
+      centerX >= minX && centerX <= maxX &&
+      centerY >= minY && centerY <= maxY;
+
+    // 포인트 중 일정 비율 이상이 가이드라인 내부에 있는지 확인
+    const pointsInGuide = points.filter(p => 
+      p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY
+    ).length;
+    const pointsRatio = pointsInGuide / points.length;
+
+    // 중심점이 가이드 내부에 있고, 60% 이상의 포인트가 가이드 내부에 있으면 정렬됨
+    return isCenterInGuide && pointsRatio >= 0.6;
+  }, []);
+
+  // 자동 촬영 실행
+  const triggerAutoCapture = useCallback(async () => {
+    if (autoCaptureTriggeredRef.current || isCapturing || !camera.current || !isReady) {
+      return;
+    }
+
+    try {
+      autoCaptureTriggeredRef.current = true;
+      setIsCapturing(true);
+      
+      console.log('🤖 자동 촬영 시작 - 구도 적합');
+
+      const photo = await camera.current.takePhoto({
+        qualityPrioritization: 'quality',
+        flash: 'off',
+        enableShutterSound: false,
+      });
+
+      const photoPath = photo.path.startsWith('file://') 
+        ? photo.path 
+        : `file://${photo.path}`;
+      
+      const asset = {
+        uri: photoPath,
+        type: 'image/jpeg',
+        fileName: `dental_${position}_${Date.now()}.jpg`,
+        width: photo.width,
+        height: photo.height,
+      };
+
+      console.log('✅ 자동 촬영 완료');
+      onCapture(asset);
+    } catch (error) {
+      console.error('❌ 자동 촬영 오류:', error);
+      autoCaptureTriggeredRef.current = false; // 에러 시 재시도 허용
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [isReady, isCapturing, position, onCapture]);
+
+  // 0.5초마다 사진 전송 (입술 검출)
+  const uploadAndDetectLips = useCallback(async () => {
+    if (!lastPhotoRef.current) return;
+
+    try {
+      setIsDetecting(true);
       
       // 입술 검출 API 호출
-      const result = await detectLips(photoPath);
+      const result = await detectLips(lastPhotoRef.current);
       
       if (result.success && result.data.faceDetected) {
-        setLipPoints(result.data.lipPoints);
+        const scaleX = SCREEN_WIDTH / result.data.width;
+        const scaleY = SCREEN_HEIGHT / result.data.height;
+        
+        // 화면 좌표로 변환
+        const screenPoints = result.data.lipPoints.map(point => ({
+          x: point.x * scaleX,
+          y: point.y * scaleY,
+        }));
+
+        setLipPoints(screenPoints);
         setImageSize({
           width: result.data.width,
           height: result.data.height,
         });
+        
+        console.log('✅ 입술 검출 성공:', screenPoints.length, '개 포인트');
+
+        // 입술 포인트가 가이드라인과 일치하는지 확인
+        if (screenPoints.length > 0 && checkAlignment(screenPoints, position)) {
+          console.log('🎯 구도 적합 - 자동 촬영 트리거');
+          // 약간의 지연 후 자동 촬영 (안정성 향상)
+          setTimeout(() => {
+            triggerAutoCapture();
+          }, 300);
+        }
       } else {
         // 얼굴이 감지되지 않으면 포인트 초기화
         setLipPoints([]);
@@ -93,20 +232,48 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       // 에러 발생 시 조용히 처리 (사용자에게 알리지 않음)
     } finally {
       setIsDetecting(false);
-      isProcessingRef.current = false;
     }
-  }, [hasPermission]);
+  }, [position, checkAlignment, triggerAutoCapture]);
 
-  // 0.5초마다 입술 검출 시작
+  // 카메라 준비 완료 핸들러
+  const handleCameraReady = useCallback(() => {
+    setIsReady(true);
+    console.log('✅ 카메라 준비 완료');
+  }, []);
+
+  // 카메라 활성화 지연 (안정성 향상)
   useEffect(() => {
-    if (hasPermission && device) {
-      // 즉시 한 번 실행
-      captureAndDetectLips();
-      
-      // 0.5초마다 반복
-      detectionIntervalRef.current = setInterval(() => {
-        captureAndDetectLips();
+    const timer = setTimeout(() => {
+      console.log('🎬 카메라 활성화');
+      setIsCameraActive(true);
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      console.log('🛑 카메라 비활성화');
+      setIsCameraActive(false);
+    };
+  }, []);
+
+  // 1초마다 사진 촬영 (셔터음 무음)
+  useEffect(() => {
+    if (hasPermission && device && isReady && isCameraActive) {
+      // 초기 지연 후 시작 (카메라 세션 안정화)
+      const initialDelay = setTimeout(() => {
+        capturePhoto();
       }, 500);
+      
+      // 1초마다 사진 촬영
+      detectionIntervalRef.current = setInterval(() => {
+        capturePhoto();
+      }, 1000);
+
+      return () => {
+        clearTimeout(initialDelay);
+        if (detectionIntervalRef.current) {
+          clearInterval(detectionIntervalRef.current);
+        }
+      };
     }
 
     return () => {
@@ -114,32 +281,59 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         clearInterval(detectionIntervalRef.current);
       }
     };
-  }, [hasPermission, device, captureAndDetectLips]);
+  }, [hasPermission, device, isReady, isCameraActive, capturePhoto]);
+
+  // 0.5초마다 사진 전송 (입술 검출)
+  useEffect(() => {
+    if (hasPermission && device && isReady && isCameraActive) {
+      // 0.5초마다 사진 전송
+      uploadIntervalRef.current = setInterval(() => {
+        uploadAndDetectLips();
+      }, 500);
+    }
+
+    return () => {
+      if (uploadIntervalRef.current) {
+        clearInterval(uploadIntervalRef.current);
+      }
+    };
+  }, [hasPermission, device, isReady, isCameraActive, uploadAndDetectLips]);
 
   const takePhoto = async () => {
-    if (!camera.current || isCapturing || !hasPermission) return;
+    console.log('📸 촬영 시도 - 카메라 준비:', isReady, '카메라 ref:', !!camera.current);
+
+    if (!camera.current || !isReady || isCapturing || !hasPermission) {
+      console.warn('⚠️ 촬영 불가 - 카메라가 준비되지 않음');
+      return;
+    }
 
     try {
       setIsCapturing(true);
+      
+      // 안정적인 기본 촬영 옵션
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'speed',
         flash: 'off',
+        enableShutterSound: false,
       });
 
-      // photo.path를 asset 형식으로 변환
-      // react-native-vision-camera는 path를 반환합니다
-      const photoPath = photo.path;
+      console.log('📸 촬영 성공, 결과:', photo);
+
+      const photoPath = photo.path.startsWith('file://') 
+        ? photo.path 
+        : `file://${photo.path}`;
+      
       const asset = {
-        uri: Platform.OS === 'ios' ? `file://${photoPath}` : `file://${photoPath}`,
+        uri: photoPath,
         type: 'image/jpeg',
-        fileName: `photo_${Date.now()}.jpg`,
+        fileName: `dental_${position}_${Date.now()}.jpg`,
         width: photo.width,
         height: photo.height,
       };
 
       onCapture(asset);
     } catch (error) {
-      console.error('사진 촬영 오류:', error);
+      console.error('❌ 촬영 오류:', error);
       Alert.alert('오류', '사진 촬영에 실패했습니다. 다시 시도해주세요.');
     } finally {
       setIsCapturing(false);
@@ -177,8 +371,14 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
           ref={camera}
           style={styles.camera}
           device={device}
-          isActive={isActive}
+          isActive={isCameraActive}
           photo={true}
+          onInitialized={handleCameraReady}
+          onError={(error) => {
+            console.error('Camera error:', error);
+            console.error('Error code:', error.code);
+            console.error('Error message:', error.message);
+          }}
         />
       )}
 
@@ -213,13 +413,20 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         </View>
 
         {/* 촬영 버튼 */}
-        <TouchableOpacity
-          style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
-          onPress={takePhoto}
-          disabled={isCapturing}
-        >
-          <View style={styles.captureButtonInner} />
-        </TouchableOpacity>
+        {isReady ? (
+          <TouchableOpacity
+            style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
+            onPress={takePhoto}
+            disabled={isCapturing}
+          >
+            <View style={styles.captureButtonInner} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.loadingIndicator}>
+            <ActivityIndicator size="small" color="white" />
+            <Text style={styles.loadingText}>준비 중...</Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -527,6 +734,15 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  loadingIndicator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: 'white',
+    marginTop: 8,
+    fontSize: 12,
   },
 });
 
