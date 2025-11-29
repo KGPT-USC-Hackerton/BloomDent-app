@@ -113,3 +113,52 @@ export const getUserAppointments = async (userId, status = null) => {
   }
 };
 
+// 예약 가능한 날짜 조회
+export const getAvailableDates = async (clinicId, fromDate = null, toDate = null) => {
+  try {
+    let endpoint = `/clinics/${clinicId}/available-dates`;
+    const params = [];
+    if (fromDate) params.push(`from_date=${fromDate}`);
+    if (toDate) params.push(`to_date=${toDate}`);
+    if (params.length > 0) endpoint += `?${params.join('&')}`;
+    const response = await get(endpoint);
+    return response;
+  } catch (error) {
+    console.error('예약 가능한 날짜 조회 실패:', error);
+    throw error;
+  }
+};
+
+// 예약 가능한 시간 조회
+export const getAvailableSlots = async (clinicId, date) => {
+  try {
+    const response = await get(`/clinics/${clinicId}/available-slots?date=${date}`);
+    return response;
+  } catch (error) {
+    console.error('예약 가능한 시간 조회 실패:', error);
+    throw error;
+  }
+};
+
+// 사전 자가진단 설문 질문 조회
+export const getSurveyQuestions = async () => {
+  try {
+    const response = await get('/appointments/surveys/questions');
+    return response;
+  } catch (error) {
+    console.error('설문 질문 조회 실패:', error);
+    throw error;
+  }
+};
+
+// 예약 생성
+export const createAppointment = async (appointmentData) => {
+  try {
+    const response = await post('/appointments', appointmentData);
+    return response;
+  } catch (error) {
+    console.error('예약 생성 실패:', error);
+    throw error;
+  }
+};
+
