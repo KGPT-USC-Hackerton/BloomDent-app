@@ -9,6 +9,8 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { login } from '../services/authService';
 
 const LoginScreen = ({ onLogin, onNavigateToSignUp }) => {
@@ -17,39 +19,53 @@ const LoginScreen = ({ onLogin, onNavigateToSignUp }) => {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      Alert.alert('오류', '아이디와 비밀번호를 입력해주세요.');
-      return;
-    }
+  if (!username.trim() || !password.trim()) {
+    Alert.alert('오류', '아이디와 비밀번호를 입력해주세요.');
+    return;
+  }
 
-    setLoading(true);
-    try {
-      const response = await login(username.trim(), password);
-      
-      if (response.success) {
-        // 로그인 성공
-        if (onLogin) {
-          onLogin(response.data.user);
-        }
-      }
-    } catch (error) {
-      let errorMessage = '로그인 중 오류가 발생했습니다.';
-      
-      if (error.status === 401) {
-        errorMessage = error.message || '아이디 또는 비밀번호가 일치하지 않습니다.';
-      } else if (error.status === 400) {
-        errorMessage = error.message || '아이디와 비밀번호를 입력해주세요.';
-      } else if (error.status === 0) {
-        errorMessage = error.message || '네트워크 연결을 확인해주세요.';
-      } else if (error.message) {
-        errorMessage = error.message;
+  setLoading(true);
+  try {
+    const response = await login(username.trim(), password);
+
+    console.log('✅ login response:', response);
+
+    if (response?.success) {
+      // 백엔드 응답 구조: { success, data: { user, ... } } 라고 가정
+      const user = response.data?.user;
+
+      if (!user) {
+        throw new Error("로그인 응답에 user 정보가 없습니다.");
       }
 
-      Alert.alert('오류', errorMessage);
-    } finally {
-      setLoading(false);
+      // ✅ 1) user_id를 AsyncStorage에 저장
+      await AsyncStorage.setItem('user_id', String(user.id));
+
+      // ✅ 2) 기존 콜백도 그대로 호출
+      if (onLogin) {
+        onLogin(user);
+      }
     }
-  };
+  } catch (error) {
+    console.log('❌ login error:', error);
+
+    let errorMessage = '로그인 중 오류가 발생했습니다.';
+
+    if (error.status === 401) {
+      errorMessage = error.message || '아이디 또는 비밀번호가 일치하지 않습니다.';
+    } else if (error.status === 400) {
+      errorMessage = error.message || '아이디와 비밀번호를 입력해주세요.';
+    } else if (error.status === 0) {
+      errorMessage = error.message || '네트워크 연결을 확인해주세요.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    Alert.alert('오류', errorMessage);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <SafeAreaView style={styles.container}>
