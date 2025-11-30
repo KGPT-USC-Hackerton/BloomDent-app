@@ -14,6 +14,14 @@ import LoginScreen from './screens/LoginScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import Start_SurveyScreen from './screens/Start_SurveyScreen';
 import LearnScreen from './screens/LearnScreen';
+import StatisticsScreen from './screens/StatisticsScreen';
+import SubscriptionScreen from './screens/SubscriptionScreen';
+import NotificationSettingsScreen from './screens/NotificationSettingsScreen';
+import PrivacySettingsScreen from './screens/PrivacySettingsScreen';
+import AppSettingsScreen from './screens/AppSettingsScreen';
+import HelpScreen from './screens/HelpScreen';
+import TermsOfServiceScreen from './screens/TermsOfServiceScreen';
+import PrivacyPolicyScreen from './screens/PrivacyPolicyScreen';
 import { getCurrentUser } from './services/authService';
 import { getSurveyCompleted } from './utils/storage';
 
@@ -30,6 +38,62 @@ function MyPageStack({ onLogout }) {
       <Stack.Screen
         name="EditProfile"
         component={EditProfileScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Statistics"
+        component={StatisticsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Subscription"
+        component={SubscriptionScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="NotificationSettings"
+        component={NotificationSettingsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="PrivacySettings"
+        component={PrivacySettingsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="AppSettings"
+        component={AppSettingsScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="Help"
+        component={HelpScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="TermsOfService"
+        component={TermsOfServiceScreen}
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="PrivacyPolicy"
+        component={PrivacyPolicyScreen}
         options={{
           headerShown: false,
         }}
