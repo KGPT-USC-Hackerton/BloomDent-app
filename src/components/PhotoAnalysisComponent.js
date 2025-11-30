@@ -171,11 +171,30 @@ export default function PhotoAnalysisComponent({ onReset }) {
   }, []);
 
   /**
-   * 이미지 삭제
+   * 이미지 삭제 (로컬 상태, Cloudinary, DB 모두에서 삭제)
    */
-  const removeImage = useCallback((imageId) => {
+  const removeImage = useCallback(async (imageId) => {
+    // 현재 이미지 정보 찾기
+    const imageToRemove = images.find(img => img.id === imageId);
+    
+    if (!imageToRemove) {
+      return;
+    }
+
+    // 업로드 완료된 이미지인 경우 Cloudinary와 DB에서도 삭제
+    if (imageToRemove.uploadedImageId) {
+      try {
+        await deleteImage(imageToRemove.uploadedImageId);
+        console.log('✅ 이미지 삭제 완료 (Cloudinary & DB):', imageToRemove.uploadedImageId);
+      } catch (error) {
+        console.error('❌ 이미지 삭제 오류:', error);
+        // 삭제 실패해도 로컬 상태에서는 제거 (사용자 경험을 위해)
+      }
+    }
+
+    // 로컬 상태에서 제거
     setImages(prev => prev.filter(img => img.id !== imageId));
-  }, []);
+  }, [images]);
 
 
   /**
