@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, ScrollView, Modal } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { uploadImage, pollAnalysisStatus, deleteImage } from '../services/imageService';
+import { uploadImage, deleteImage, pollAnalysisStatus, pollHistoryAnalysisStatus } from '../services/imageService';
 import { getUser } from '../utils/storage';
 import CameraGuideComponent from './CameraGuideComponent';
 
@@ -108,6 +108,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
         asset,
         position,
         uploadedImageId: null,
+        historyId: null, // history_id 저장
         analysisResult: null,
         status: 'pending', // 'pending' | 'uploading' | 'uploaded' | 'analyzing' | 'completed' | 'failed'
         error: null,
@@ -143,9 +144,8 @@ export default function PhotoAnalysisComponent({ onReset }) {
     setImages(prev => prev.filter(img => img.id !== imageId));
   }, [images]);
 
-
   /**
-   * 이미지 업로드 및 분석 시작
+   * 이미지 업로드 (분석은 하지 않음)
    */
   const startAnalysis = useCallback(async () => {
     // 이미지 개수 확인 (3개가 아니면 경고)
@@ -160,16 +160,10 @@ export default function PhotoAnalysisComponent({ onReset }) {
     // 업로드 대기 중인 이미지만 필터링
     const pendingImages = images.filter(img => img.status === 'pending' || img.status === 'failed');
     
+    // 이미 모두 업로드된 경우
     if (pendingImages.length === 0) {
-      // 이미 업로드된 이미지가 있는 경우 (재시도)
-      const uploadedImages = images.filter(img => img.status === 'uploaded' && img.uploadedImageId);
-      if (uploadedImages.length === TOTAL_IMAGES) {
-        // 바로 분석 시작
-        setIsAnalyzing(true);
-        setUploadProgress(50);
-        await startAnalysisForUploadedImages(uploadedImages);
-        return;
-      }
+      Alert.alert('알림', '모든 이미지가 이미 업로드되었습니다.');
+      return;
     }
 
     try {
@@ -206,25 +200,30 @@ export default function PhotoAnalysisComponent({ onReset }) {
               const uploadedCount = images.filter(i => 
                 i.status === 'uploaded' || (i.id === img.id && progress === 100)
               ).length;
-              const uploadProgress = (uploadedCount / images.length) * 50; // 업로드는 0-50%
-              setUploadProgress(uploadProgress);
+              const currentProgress = (uploadedCount / images.length) * 100;
+              setUploadProgress(currentProgress);
             }
           );
+
+          console.log('업로드 응답:', JSON.stringify(uploadResponse, null, 2));
 
           if (!uploadResponse.success || !uploadResponse.data?.image_id) {
             throw new Error(uploadResponse.message || '이미지 업로드에 실패했습니다.');
           }
 
           const uploadedImageId = uploadResponse.data.image_id;
+          const historyId = uploadResponse.data.history_id || null; // history_id 추출 (없을 수 있음)
+          
+          console.log(`이미지 ${img.id} 업로드 완료 - image_id: ${uploadedImageId}, history_id: ${historyId}`);
 
-          // 업로드 완료 상태로 변경
+          // 업로드 완료 상태로 변경 (history_id도 함께 저장)
           setImages(prev => prev.map(i => 
             i.id === img.id 
-              ? { ...i, uploadedImageId, status: 'uploaded' } 
+              ? { ...i, uploadedImageId, historyId, status: 'uploaded' } 
               : i
           ));
 
-          return { imageId: img.id, uploadedImageId };
+          return { imageId: img.id, uploadedImageId, historyId };
         } catch (error) {
           console.error(`이미지 ${img.id} 업로드 오류:`, error);
           
@@ -258,27 +257,32 @@ export default function PhotoAnalysisComponent({ onReset }) {
         return;
       }
 
-      // 업로드 완료 - 분석 시작
+      // 업로드 완료 - history_id 추출 (분석은 하지 않음)
       const uploadedImages = images.map(img => {
         const result = uploadResults.find(r => 
           r.status === 'fulfilled' && r.value.imageId === img.id
         );
         if (result && result.status === 'fulfilled') {
-          return { ...img, uploadedImageId: result.value.uploadedImageId, status: 'uploaded' };
+          return { 
+            ...img, 
+            uploadedImageId: result.value.uploadedImageId, 
+            historyId: result.value.historyId || null,
+            status: 'uploaded' 
+          };
         }
         return img;
       }).filter(img => img.uploadedImageId);
 
+      // 업로드만 완료 (분석은 시작하지 않음)
       setIsUploading(false);
-      setIsAnalyzing(true);
-      setUploadProgress(50); // 분석 시작 시점
-
-      // 분석 시작
-      await startAnalysisForUploadedImages(uploadedImages);
+      setUploadProgress(100);
+      
+      if (uploadedImages.length === TOTAL_IMAGES) {
+        Alert.alert('업로드 완료', '모든 이미지 업로드가 완료되었습니다.');
+      }
     } catch (error) {
-      console.error('업로드/분석 오류:', error);
+      console.error('업로드 오류:', error);
       setIsUploading(false);
-      setIsAnalyzing(false);
       setUploadProgress(0);
       
       let errorMessage = '업로드 중 오류가 발생했습니다.';
@@ -293,15 +297,111 @@ export default function PhotoAnalysisComponent({ onReset }) {
       
       setPickerError(errorMessage);
     }
-  }, [images, formatAnalysisResult]);
+  }, [images]);
 
   /**
-   * 업로드 완료된 이미지들의 분석 시작
+   * History ID를 사용한 분석 시작 (3개 사진 세트)
+   */
+  const startAnalysisWithHistoryId = useCallback(async (historyId, uploadedImages) => {
+    try {
+      // 모든 이미지를 분석 중 상태로 변경
+      setImages(prev => prev.map(i => 
+        uploadedImages.some(u => u.id === i.id) 
+          ? { ...i, status: 'analyzing' } 
+          : i
+      ));
+
+      // History ID로 분석 결과 폴링
+      const analysisResponse = await pollHistoryAnalysisStatus(historyId, {
+        interval: 2500,
+        maxAttempts: 60,
+        onStatusChange: (status, attemptCount) => {
+          console.log(`History ${historyId} 분석 상태: ${status} (시도 ${attemptCount}회)`);
+          // 진행률 업데이트 (분석 단계: 50-100%)
+          const progress = status === 'completed' ? 100 : 50 + (attemptCount / 60) * 50;
+          setUploadProgress(Math.min(progress, 100));
+        },
+      });
+
+      if (!analysisResponse.success || !analysisResponse.data) {
+        throw new Error(analysisResponse.message || '분석 결과를 가져올 수 없습니다.');
+      }
+
+      const { upper, lower, front } = analysisResponse.data;
+
+      // 각 위치별로 분석 결과 저장
+      setImages(prev => {
+        const updated = prev.map(img => {
+          let analysisResult = null;
+          
+          if (img.position === 'upper' && upper?.analysis) {
+            analysisResult = formatAnalysisResult({ analysis: upper.analysis });
+          } else if (img.position === 'lower' && lower?.analysis) {
+            analysisResult = formatAnalysisResult({ analysis: lower.analysis });
+          } else if (img.position === 'front' && front?.analysis) {
+            analysisResult = formatAnalysisResult({ analysis: front.analysis });
+          }
+
+          if (analysisResult) {
+            return { ...img, analysisResult, status: 'completed' };
+          }
+          
+          return img;
+        });
+
+        // 진행률 업데이트
+        const completedCount = updated.filter(i => i.status === 'completed').length;
+        const progress = 50 + (completedCount / TOTAL_IMAGES) * 50;
+        setUploadProgress(Math.min(progress, 100));
+
+        return updated;
+      });
+
+      // 전체 진행률 100%
+      setUploadProgress(100);
+      setIsAnalyzing(false);
+
+      // 분석 완료 알림
+      const allCompleted = uploadedImages.every(img => {
+        const currentImg = imagesRef.current.find(i => i.id === img.id);
+        return currentImg?.status === 'completed';
+      });
+
+      if (allCompleted) {
+        Alert.alert('분석 완료', '모든 이미지의 분석이 완료되었습니다.');
+      }
+    } catch (error) {
+      console.error('분석 오류:', error);
+      setIsAnalyzing(false);
+      setUploadProgress(0);
+      
+      // 실패한 이미지 표시
+      const errorMessageText = error?.message || error?.toString() || '분석 실패';
+      setImages(prev => prev.map(i => 
+        uploadedImages.some(u => u.id === i.id) && i.status !== 'completed'
+          ? { ...i, status: 'failed', error: errorMessageText }
+          : i
+      ));
+
+      let errorMessage = '분석 중 오류가 발생했습니다.';
+      
+      if (error.status === 0) {
+        errorMessage = '네트워크 연결을 확인해주세요. 백엔드 서버가 실행 중인지 확인해주세요.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.status === 500) {
+        errorMessage = '서버 오류가 발생했습니다. 백엔드 서버 로그를 확인해주세요.';
+      }
+      
+      setPickerError(errorMessage);
+    }
+  }, [formatAnalysisResult]);
+
+  /**
+   * 업로드 완료된 이미지들의 분석 시작 (기존 방식 - fallback)
    */
   const startAnalysisForUploadedImages = useCallback(async (uploadedImages) => {
     try {
-      let completedCount = 0;
-      
       // 모든 이미지의 분석 상태 폴링 시작
       const pollPromises = uploadedImages.map((img) => {
         // 분석 중 상태로 변경
@@ -332,16 +432,16 @@ export default function PhotoAnalysisComponent({ onReset }) {
                 return updated;
               });
               
-              completedCount++;
               return { imageId: img.id, result: formattedResult };
             } else {
               throw new Error(statusResponse.message || '분석 결과를 가져올 수 없습니다.');
             }
           })
           .catch((error) => {
+            const errorMessageText = error?.message || error?.toString() || '분석 실패';
             setImages(prev => prev.map(i => 
               i.id === img.id 
-                ? { ...i, status: 'failed', error: error.message || '분석 실패' } 
+                ? { ...i, status: 'failed', error: errorMessageText } 
                 : i
             ));
             throw error;
@@ -693,6 +793,45 @@ export default function PhotoAnalysisComponent({ onReset }) {
           {allCompleted && hasResults && (
             <View style={styles.resultsSection}>
               <Text style={styles.resultsTitle}>분석 결과</Text>
+              
+              {/* 전체 요약 */}
+              {images.length === TOTAL_IMAGES && images.every(img => img.analysisResult) && (
+                <View style={styles.summaryCard}>
+                  <Text style={styles.summaryTitle}>전체 요약</Text>
+                  <View style={styles.summaryScores}>
+                    {images.map((img) => {
+                      const result = img.analysisResult;
+                      if (!result || result.score === null) return null;
+                      return (
+                        <View key={img.id} style={styles.summaryScoreItem}>
+                          <Text style={styles.summaryScoreLabel}>
+                            {POSITION_LABELS[img.position]}
+                          </Text>
+                          <Text style={styles.summaryScoreValue}>{result.score}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.summaryAverage}>
+                    {(() => {
+                      const scores = images
+                        .map(img => img.analysisResult?.score)
+                        .filter(score => score !== null);
+                      const average = scores.length > 0 
+                        ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
+                        : null;
+                      return average !== null ? (
+                        <>
+                          <Text style={styles.summaryAverageLabel}>평균 점수</Text>
+                          <Text style={styles.summaryAverageValue}>{average}</Text>
+                        </>
+                      ) : null;
+                    })()}
+                  </View>
+                </View>
+              )}
+
+              {/* 개별 결과 */}
               {images.map((img, index) => {
                 if (!img.analysisResult) return null;
                 
@@ -706,7 +845,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
                       />
                       <View style={styles.resultHeaderText}>
                         <Text style={styles.resultPosition}>
-                          {index + 1}번째 사진 - {POSITION_LABELS[img.position] || '선택 안함'}
+                          {POSITION_LABELS[img.position] || '선택 안함'}
                         </Text>
                         {result.score !== null && (
                           <Text style={styles.resultScore}>점수: {result.score}</Text>
@@ -1171,5 +1310,57 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontSize: 16,
     fontWeight: '600',
+  },
+  summaryCard: {
+    backgroundColor: '#f0f9ff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+  },
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  summaryScores: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  summaryScoreItem: {
+    alignItems: 'center',
+  },
+  summaryScoreLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  summaryScoreValue: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#3b82f6',
+  },
+  summaryAverage: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#dbeafe',
+  },
+  summaryAverageLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginRight: 12,
+  },
+  summaryAverageValue: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#2563eb',
   },
 });
