@@ -1,5 +1,16 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Linking } from 'react-native';
+// screens/CareScreen.js
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  TouchableOpacity,
+  ActivityIndicator,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import SurveyComponent from '../components/SurveyComponent';
 import PhotoAnalysisComponent from '../components/PhotoAnalysisComponent';
 import OralCareRecordComponent from '../components/OralCareRecordComponent';
@@ -7,97 +18,226 @@ import OralCareRecordComponent from '../components/OralCareRecordComponent';
 const tabs = [
   { id: 'survey', label: '설문조사' },
   { id: 'photo', label: '구강 사진 분석' },
-  { id: 'records', label: '구강 관리 기록' },
 ];
 
-export default function CareScreen() {
-  const [activeTab, setActiveTab] = useState('survey');
+const FALLBACK_BACKEND_BASE_URL = 'http://210.119.33.3:3000';
 
-  const openProductLink = useCallback((url) => {
-    Linking.openURL(url).catch(() => {
-      Alert.alert('링크 오류', '앱에서 해당 페이지를 열 수 없습니다.');
-    });
+export default function CareScreen({ route }) {
+  const [activeTab, setActiveTab] = useState('survey');
+  const [userId, setUserId] = useState(null);
+  const [isSurveyStarted, setIsSurveyStarted] = useState(false);
+
+  // score_history 기반 기록
+  const [records, setRecords] = useState([]);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsError, setRecordsError] = useState(null);
+
+  // 설문 완료 후 AI 분석/추천 진행 상태
+  const [isProcessingSurvey, setIsProcessingSurvey] = useState(false);
+
+  // 설문 완료 후 기록 다시 불러오도록 트리거
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const BACKEND_BASE_URL =
+    route?.params?.BACKEND_BASE_URL || FALLBACK_BACKEND_BASE_URL;
+
+  // user_id 로드
+  useEffect(() => {
+    (async () => {
+      try {
+        const storedUserId = await AsyncStorage.getItem('user_id');
+        console.log('📌 CareScreen user_id =', storedUserId);
+
+        if (storedUserId) {
+          setUserId(Number(storedUserId));
+        }
+      } catch (e) {
+        console.log('Failed to load user_id:', e);
+      }
+    })();
   }, []);
 
-  // ✅ SurveyComponent의 새 결과 구조에 맞게 수정
-  const handleSurveySubmit = (result) => {
-    if (!result) return;
-
-    // 새 구조: result.overall.normalizedScore
-    const overallScoreRaw =
-      result?.overall?.normalizedScore ??
-      result?.normalizedScore ?? // 혹시 이전 구조가 남아있을 때 대비
-      0;
-
-    const score = Math.max(0, Math.min(100, overallScoreRaw));
-
-    Alert.alert(
-      '설문 결과',
-      `오늘 당신의 구강 점수는 💯 중 ${score}점이에요.\n작은 습관 하나로 내일의 치아 건강을 바꿀 수 있어요.\n\n아래 구강용품을 추천드려요!`,
-      [
-        {
-          text: '괜찮아요',
-          style: 'destructive',
-        },
-        {
-          text: '전동칫솔',
-          onPress: () =>
-            openProductLink(
-              'https://www.coupang.com/vp/products/8486378493?itemId=24560295659',
-            ),
-        },
-        {
-          text: '치실',
-          onPress: () =>
-            openProductLink(
-              'https://www.coupang.com/vp/products/8645037348?itemId=25558036482&vendorItemId=84656604794&sourceType=srp_product_ads&clickEventId=06feba20-b8d4-11f0-8202-39e0024c8ace&korePlacement=15&koreSubPlacement=1&traceId=mhjdca63',
-            ),
-        },
-        {
-          text: '칫솔',
-          onPress: () =>
-            openProductLink(
-              'https://hetras.co.kr/product/premium-scaling-toothbrush-21ea/219',
-            ),
-        },
-      ],
-    );
-  };
-
-  const mockTimelineData = [
-    {
-      date: '2025-09-23',
-      score: 82,
-      status: 'good',
-      note: '구강 상태 양호, 치석 약간 관찰'
-    },
-    {
-      date: '2025-09-20',
-      score: 78,
-      status: 'warning',
-      note: '잇몸 염증 초기 증상'
-    },
-    {
-      date: '2025-09-17',
-      score: 85,
-      status: 'good',
-      note: '전반적으로 건강한 상태'
-    },
-    {
-      date: '2025-09-14',
-      score: 80,
-      status: 'good',
-      note: '정기 관리 지속 필요'
+  // 탭 변경 시 설문 숨기기
+  useEffect(() => {
+    if (activeTab !== 'survey') {
+      setIsSurveyStarted(false);
     }
-  ];
+  }, [activeTab]);
+  // ✅ score_history 불러오기 (userId, reloadKey가 바뀔 때마다)
+  useEffect(() => {
+    if (!userId) return;
+
+    const fetchRecords = async () => {
+      try {
+        setRecordsLoading(true);
+        setRecordsError(null);
+
+        const res = await fetch(
+          `${BACKEND_BASE_URL}/api/survey-detail/history/${userId}`,
+        );
+        const json = await res.json();
+
+        if (!json.success) {
+          throw new Error(json.message || 'score_history 조회 실패');
+        }
+
+        // 1️⃣ 원본 리스트
+        const list = json.data || [];
+
+        // 2️⃣ created_at / createdAt 기준으로 "가장 최근"이 위로 오게 정렬
+        const sorted = [...list].sort((a, b) => {
+          const aDate = new Date(a.created_at || a.createdAt || 0);
+          const bDate = new Date(b.created_at || b.createdAt || 0);
+          return bDate - aDate; // b가 더 최신이면 앞으로
+        });
+
+        // 3️⃣ 화면에서 쓸 형태로 매핑
+        const mapped = sorted.map(item => {
+          const rawDate = item.created_at || item.createdAt;
+
+          let dateStr = '';
+          if (rawDate) {
+            const d = new Date(rawDate); // 기기 시간대 기준
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`; // 2025-11-30
+          }
+
+          return {
+            id: item.id,
+            date: dateStr,
+            score: item.total_score,
+            survey_session_id:
+              item.survey_session_id || item.session_id || null,
+            note: item.analysis_summary || item.note || null,
+          };
+        });
+
+        setRecords(mapped);
+      } catch (err) {
+        console.log('score_history fetch error:', err);
+        setRecordsError(err.message);
+      } finally {
+        setRecordsLoading(false);
+      }
+    };
+
+    fetchRecords();
+  }, [userId, BACKEND_BASE_URL, reloadKey]);
+
+  /**
+   * 설문 완료 시 호출되는 콜백
+   * - result 안에는 설문 점수 + 세션 ID 가 들어있다고 가정
+   *   (SurveyComponent 쪽에서 session_id 또는 sessionId를 넘겨줘야 함)
+   * - 1) 기본 점수 Alert
+   * - 2) 백엔드에 분석/추천 요청 (Gemini)
+   */
+  const handleSurveySubmit = async result => {
+    if (!result || !userId) return;
+    setIsProcessingSurvey(true);
+
+    try {
+      const overallScoreRaw =
+        result?.overall?.normalizedScore ??
+        result?.normalizedScore ??
+        result?.scores?.total_score ??
+        0;
+      const score = Math.max(0, Math.min(100, overallScoreRaw));
+
+      const surveySessionId =
+        result?.session_id ||
+        result?.sessionId ||
+        result?.scores?.survey_session_id ||
+        result?.scores?.session_id ||
+        null;
+
+      console.log('🔍 survey result from SurveyComponent:', result);
+      console.log(
+        '🔍 userId:',
+        userId,
+        'surveySessionId:',
+        surveySessionId,
+        'score:',
+        score,
+      );
+
+      // 2) 설문 분석 요청
+      const analysisRes = await fetch(
+        `${BACKEND_BASE_URL}/api/ai/survey-analysis`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            survey_session_id: surveySessionId,
+            score,
+            raw_result: result, // 백엔드에서 필요하면 쓰도록 전체를 같이 보냄
+          }),
+        },
+      );
+
+      const analysisJson = await analysisRes.json();
+      console.log('🔍 analysisJson:', analysisJson);
+
+      if (!analysisRes.ok || !analysisJson.success) {
+        throw new Error(
+          analysisJson.message ||
+            `분석 API 에러 (status ${analysisRes.status})`,
+        );
+      }
+
+      // 3) 추천 요청
+      const recRes = await fetch(`${BACKEND_BASE_URL}/api/ai/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          survey_session_id: surveySessionId,
+          score,
+          raw_result: result,
+        }),
+      });
+
+      const recJson = await recRes.json();
+      console.log('🔍 recJson:', recJson);
+
+      if (!recRes.ok || !recJson.success) {
+        throw new Error(
+          recJson.message || `추천 API 에러 (status ${recRes.status})`,
+        );
+      }
+      setReloadKey(prev => prev + 1); // 기록 다시 불러오기 트리거
+      Alert.alert(
+        // 완료 안내
+        '설문 완료',
+        '설문 결과 분석과 맞춤형 구강 용품 추천이 완료되었습니다.',
+      );
+      // ... 성공 시 Alert 표시 ...
+    } catch (error) {
+      console.error('설문 분석/추천 처리 오류:', error);
+      Alert.alert(
+        '분석 오류',
+        error.message ||
+          '설문 분석 또는 추천을 생성하는 중 문제가 발생했습니다.',
+      );
+    } finally {
+      setIsProcessingSurvey(false);
+      setIsSurveyStarted(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
+      {/* 탭 바 */}
       <View style={styles.tabBar}>
-        {tabs.map((tab) => (
+        {tabs.map(tab => (
           <View key={tab.id} style={styles.tabItem}>
             <TouchableOpacity
-              style={[styles.tabButton, activeTab === tab.id && styles.tabButtonActive]}
+              style={[
+                styles.tabButton,
+                activeTab === tab.id && styles.tabButtonActive,
+              ]}
               onPress={() => setActiveTab(tab.id)}
             >
               <Text
@@ -114,21 +254,89 @@ export default function CareScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        {/* 설문 탭 */}
         {activeTab === 'survey' && (
           <View style={styles.section}>
-            <SurveyComponent onSubmit={handleSurveySubmit} />
+            {/* 1) 설문 시작 카드 or 설문 컴포넌트 */}
+            {!isSurveyStarted ? (
+              <View style={styles.card}>
+                <View style={styles.cardIconCircle}>
+                  <Text style={styles.cardIconText}>📝</Text>
+                </View>
+                <Text style={styles.cardTitle}>
+                  구강 건강 설문을 시작해보세요
+                </Text>
+                <Text style={styles.cardSubtitle}>
+                  5~10분 정도 소요되며, 설문 결과를 바탕으로 맞춤형 구강 관리
+                  팁과 추천 구강 용품을 제공해드려요.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => setIsSurveyStarted(true)}
+                  disabled={isProcessingSurvey}
+                >
+                  <Text style={styles.primaryButtonText}>설문 시작하기</Text>
+                </TouchableOpacity>
+
+                {isProcessingSurvey && (
+                  <View style={styles.processingBox}>
+                    <ActivityIndicator size="small" color="#2563eb" />
+                    <Text style={styles.processingText}>
+                      설문 결과를 분석 중입니다...
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <SurveyComponent
+                backendBaseUrl={BACKEND_BASE_URL}
+                userId={userId}
+                onSubmit={handleSurveySubmit}
+                isProcessing={isProcessingSurvey}
+              />
+            )}
+
+            {/* ✅ 설문을 시작하지 않았을 때만 기록 섹션 보이기 */}
+            {!isSurveyStarted && (
+              <View style={styles.historySection}>
+                {recordsLoading && (
+                  <View style={styles.historyLoading}>
+                    <ActivityIndicator size="small" color="#2563eb" />
+                    <Text style={styles.historyLoadingText}>
+                      불러오는 중...
+                    </Text>
+                  </View>
+                )}
+
+                {!recordsLoading && recordsError && (
+                  <Text style={styles.historyErrorText}>
+                    기록을 불러오는 중 오류가 발생했습니다.
+                  </Text>
+                )}
+
+                {!recordsLoading && !recordsError && records.length === 0 && (
+                  <Text style={styles.historyEmptyText}>
+                    아직 설문 기반 기록이 없어요. 설문을 완료하면 이곳에 기록이
+                    쌓여요.
+                  </Text>
+                )}
+
+                {!recordsLoading && !recordsError && records.length > 0 && (
+                  <OralCareRecordComponent
+                    records={records}
+                    backendBaseUrl={BACKEND_BASE_URL}
+                  />
+                )}
+              </View>
+            )}
           </View>
         )}
 
+        {/* 구강 사진 분석 탭 */}
         {activeTab === 'photo' && (
           <View style={styles.section}>
-            <PhotoAnalysisComponent />
-          </View>
-        )}
-
-        {activeTab === 'records' && (
-          <View style={styles.section}>
-            <OralCareRecordComponent records={mockTimelineData} />
+            <PhotoAnalysisComponent backendBaseUrl={BACKEND_BASE_URL} />
           </View>
         )}
       </ScrollView>
@@ -178,5 +386,95 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 24,
     paddingTop: 20,
+  },
+
+  // 설문 시작 카드
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  cardIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#e0ecff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  cardIconText: {
+    fontSize: 36,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  primaryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    backgroundColor: '#2563eb',
+  },
+  primaryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  // 기록 섹션
+  historySection: {
+    marginTop: 28,
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  historyLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  historyLoadingText: {
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  historyErrorText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#dc2626',
+  },
+  historyEmptyText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#6b7280',
+  },
+
+  processingBox: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  processingText: {
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#6b7280',
   },
 });
