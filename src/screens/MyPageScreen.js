@@ -80,41 +80,31 @@ export default function MyPageScreen({ navigation, onLogout }) {
         </View>
       </View>
 
-      {/* 통계 섹션 */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>127</Text>
-          <Text style={styles.statLabel}>관리 일수</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statNumber, styles.greenText]}>85</Text>
-          <Text style={styles.statLabel}>평균 점수</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statNumber, styles.purpleText]}>12</Text>
-          <Text style={styles.statLabel}>예약 완료</Text>
-        </View>
-      </View>
-
       {/* 설정 메뉴 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>설정</Text>
         <View style={styles.settingsCard}>
           {/* 알림 설정 */}
-          <View style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation?.navigate('NotificationSettings')}
+          >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.blueBackground]}>
                 <Text style={styles.settingIconText}>🔔</Text>
               </View>
               <Text style={styles.settingText}>알림 설정</Text>
             </View>
-            <Switch />
-          </View>
+            <Text style={styles.arrow}>→</Text>
+          </TouchableOpacity>
 
           <View style={styles.divider} />
 
           {/* 개인정보 보호 */}
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation?.navigate('PrivacySettings')}
+          >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.greenBackground]}>
                 <Text style={styles.settingIconText}>🛡️</Text>
@@ -127,7 +117,10 @@ export default function MyPageScreen({ navigation, onLogout }) {
           <View style={styles.divider} />
 
           {/* 앱 설정 */}
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation?.navigate('AppSettings')}
+          >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.purpleBackground]}>
                 <Text style={styles.settingIconText}>⚙️</Text>
@@ -140,7 +133,10 @@ export default function MyPageScreen({ navigation, onLogout }) {
           <View style={styles.divider} />
 
           {/* 도움말 */}
-          <TouchableOpacity style={styles.settingItem}>
+          <TouchableOpacity
+            style={styles.settingItem}
+            onPress={() => navigation?.navigate('Help')}
+          >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.yellowBackground]}>
                 <Text style={styles.settingIconText}>❓</Text>
@@ -161,7 +157,10 @@ export default function MyPageScreen({ navigation, onLogout }) {
               <Text style={styles.subscriptionDescription}>AI 분석 무제한 + 전문가 상담</Text>
               <Text style={styles.subscriptionExpiry}>2025.12.23까지</Text>
             </View>
-            <TouchableOpacity style={styles.manageButton}>
+            <TouchableOpacity
+              style={styles.manageButton}
+              onPress={() => navigation?.navigate('Subscription')}
+            >
               <Text style={styles.manageButtonText}>관리</Text>
             </TouchableOpacity>
           </View>
@@ -176,12 +175,18 @@ export default function MyPageScreen({ navigation, onLogout }) {
             <Text style={styles.appInfoValue}>1.2.3</Text>
           </View>
           <View style={styles.divider} />
-          <TouchableOpacity style={styles.appInfoItem}>
+          <TouchableOpacity
+            style={styles.appInfoItem}
+            onPress={() => navigation?.navigate('TermsOfService')}
+          >
             <Text style={styles.appInfoLabel}>서비스 약관</Text>
             <Text style={styles.arrow}>→</Text>
           </TouchableOpacity>
           <View style={styles.divider} />
-          <TouchableOpacity style={styles.appInfoItem}>
+          <TouchableOpacity
+            style={styles.appInfoItem}
+            onPress={() => navigation?.navigate('PrivacyPolicy')}
+          >
             <Text style={styles.appInfoLabel}>개인정보처리방침</Text>
             <Text style={styles.arrow}>→</Text>
           </TouchableOpacity>
@@ -252,37 +257,6 @@ const styles = StyleSheet.create({
   editButtonText: {
     fontSize: 20,
     color: '#9ca3af',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 24,
-    gap: 16,
-  },
-  statCard: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    alignItems: 'center',
-  },
-  statNumber: {
-    fontSize: 24,
-    color: '#2563eb',
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  greenText: {
-    color: '#059669',
-  },
-  purpleText: {
-    color: '#7c3aed',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6b7280',
   },
   section: {
     marginHorizontal: 16,

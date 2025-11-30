@@ -1,77 +1,599 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Platform, PermissionsAndroid, ActivityIndicator, Linking, RefreshControl } from 'react-native';
+import { NaverMapView, NaverMapMarkerOverlay } from '@mj-studio/react-native-naver-map';
+import Geolocation from '@react-native-community/geolocation';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { getNearbyDentists, getUserAppointments, getAvailableDates, getAvailableSlots, getSurveyQuestions, createAppointment } from '../services/api';
+import { getUser } from '../utils/storage';
 
 export default function AppointmentScreen() {
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [showSurvey, setShowSurvey] = useState(false);
   const [surveyStep, setSurveyStep] = useState(0);
   const [surveyAnswers, setSurveyAnswers] = useState([]);
+  const [surveyQuestions, setSurveyQuestions] = useState([]);
+  const [showFullscreenMap, setShowFullscreenMap] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [availableDates, setAvailableDates] = useState([]);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [loadingDates, setLoadingDates] = useState(false);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [loadingSurvey, setLoadingSurvey] = useState(false);
+  const [creatingAppointment, setCreatingAppointment] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState({
+    latitude: 37.5665, // 서울 기본 좌표
+    longitude: 126.9780,
+  });
+  const [clinics, setClinics] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [appointments, setAppointments] = useState([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(true);
+  const [appointmentsError, setAppointmentsError] = useState(null);
+  const [showAppointmentsModal, setShowAppointmentsModal] = useState(false);
+  
+  // 스크롤 및 카드 참조
+  const scrollViewRef = useRef(null);
+  const clinicCardRefs = useRef({});
+  const mapRef = useRef(null);
+  const smallMapRef = useRef(null);
 
-  const mockClinics = [
-    {
-      id: 1,
-      name: '서울치과의원',
-      address: '서울시 강남구 테헤란로 123',
-      rating: 4.8,
-      distance: '0.5km',
-      availableSlots: ['09:00', '10:30', '14:00', '16:30'],
-      phone: '02-123-4567'
-    },
-    {
-      id: 2,
-      name: '건강한치과',
-      address: '서울시 강남구 역삼동 456',
-      rating: 4.6,
-      distance: '0.8km',
-      availableSlots: ['09:30', '11:00', '15:00', '17:00'],
-      phone: '02-234-5678'
-    },
-    {
-      id: 3,
-      name: '미소치과병원',
-      address: '서울시 강남구 논현동 789',
-      rating: 4.9,
-      distance: '1.2km',
-      availableSlots: ['10:00', '13:30', '15:30'],
-      phone: '02-345-6789'
+  // 현재 위치 가져오기
+  useEffect(() => {
+    const requestLocationPermission = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            {
+              title: '위치 권한 요청',
+              message: '근처 치과를 찾기 위해 위치 권한이 필요합니다.',
+              buttonNeutral: '나중에',
+              buttonNegative: '거부',
+              buttonPositive: '허용',
+            }
+          );
+          if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+            getCurrentLocation();
+          }
+        } catch (err) {
+          console.warn(err);
+        }
+      } else {
+        // iOS는 Info.plist 설정만으로 자동 요청
+        getCurrentLocation();
+      }
+    };
+
+    const getCurrentLocation = () => {
+      Geolocation.getCurrentPosition(
+        (position) => {
+          const newLocation = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          };
+          setCurrentLocation(newLocation);
+          // 위치를 가져온 후 주변 치과 검색
+          fetchNearbyDentists(newLocation.latitude, newLocation.longitude);
+        },
+        (error) => {
+          console.log('위치 가져오기 실패:', error);
+          Alert.alert(
+            '위치 정보',
+            '현재 위치를 가져올 수 없습니다. 기본 위치(서울)를 표시합니다.',
+            [{ text: '확인' }]
+          );
+          // 기본 위치로 치과 검색
+          fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    };
+
+    requestLocationPermission();
+    fetchAppointments();
+  }, []);
+
+  // 예약 목록 가져오기
+  const fetchAppointments = async () => {
+    try {
+      setAppointmentsLoading(true);
+      setAppointmentsError(null);
+      
+      const userData = await getUser();
+      if (!userData || !userData.id) {
+        setAppointmentsError('로그인이 필요합니다.');
+        setAppointmentsLoading(false);
+        return;
+      }
+
+      const response = await getUserAppointments(userData.id);
+      
+      if (response.success) {
+        setAppointments(response.data);
+      } else {
+        setAppointmentsError('예약 정보를 가져오는데 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('예약 목록 조회 오류:', err);
+      setAppointmentsError(err.message || '예약 정보를 가져오는데 실패했습니다.');
+    } finally {
+      setAppointmentsLoading(false);
     }
-  ];
-
-  const surveyQuestions = [
-    {
-      question: '현재 치아나 잇몸에 통증이 있나요?',
-      options: ['없음', '약간의 통증', '심한 통증', '참을 수 없는 통증']
-    },
-    {
-      question: '최근 언제 치과 검진을 받으셨나요?',
-      options: ['3개월 이내', '6개월 이내', '1년 이내', '1년 이상']
-    },
-    {
-      question: '주요 증상은 무엇인가요?',
-      options: ['정기검진', '치아 통증', '잇몸 출혈', '치석 제거']
-    }
-  ];
-
-  const handleBooking = (clinic) => {
-    setSelectedClinic(clinic);
-    setShowSurvey(true);
   };
 
-  const handleSurveyAnswer = (answer) => {
-    const newAnswers = [...surveyAnswers, answer];
-    setSurveyAnswers(newAnswers);
+  // 주변 치과 검색 API 호출
+  const fetchNearbyDentists = async (latitude, longitude, radius = 5, isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      const response = await getNearbyDentists(latitude, longitude, radius);
+      
+      if (response.success) {
+        setClinics(response.data);
+      } else {
+        setError('치과 정보를 가져오는데 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('치과 검색 오류:', err);
+      setError(err.message || '치과 정보를 가져오는데 실패했습니다.');
+      if (!isRefresh) {
+        Alert.alert('오류', '치과 정보를 가져오는데 실패했습니다. 다시 시도해주세요.');
+      }
+    } finally {
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  };
+
+  // 새로고침 핸들러
+  const onRefresh = async () => {
+    // 현재 위치를 다시 가져와서 새로고침
+    try {
+      Geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCurrentLocation({ latitude, longitude });
+          fetchNearbyDentists(latitude, longitude, 5, true);
+        },
+        (error) => {
+          console.error('위치 가져오기 오류:', error);
+          // 위치를 가져오지 못해도 기존 위치로 새로고침
+          fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude, 5, true);
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+      );
+    } catch (err) {
+      console.error('새로고침 오류:', err);
+      fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude, 5, true);
+    }
+  };
+
+  // 예약하기 버튼 클릭
+  const handleBooking = async (clinic) => {
+    if (clinic.is_partner !== 1) {
+      Alert.alert('알림', '이 병원은 협약 병원이 아닙니다. 전화로 예약해주세요.');
+      return;
+    }
+
+    setSelectedClinic(clinic);
+    setSelectedDate(null);
+    setSelectedSlot(null);
+    setSurveyAnswers([]);
+    setSurveyStep(0);
+    
+    // 예약 가능한 날짜 조회
+    try {
+      setLoadingDates(true);
+      const today = new Date().toISOString().split('T')[0];
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 30);
+      const toDate = futureDate.toISOString().split('T')[0];
+      
+      const response = await getAvailableDates(clinic.id, today, toDate);
+      if (response.success) {
+        setAvailableDates(response.data || []);
+        setShowDatePicker(true);
+      } else {
+        Alert.alert('오류', '예약 가능한 날짜를 불러올 수 없습니다.');
+      }
+    } catch (err) {
+      console.error('날짜 조회 오류:', err);
+      Alert.alert('오류', err.message || '예약 가능한 날짜를 불러올 수 없습니다.');
+    } finally {
+      setLoadingDates(false);
+    }
+  };
+
+  // 날짜 선택
+  const handleDateSelect = async (date) => {
+    setSelectedDate(date);
+    setShowDatePicker(false);
+    
+    // 예약 가능한 시간 조회
+    try {
+      setLoadingSlots(true);
+      const response = await getAvailableSlots(selectedClinic.id, date);
+      if (response.success) {
+        const availableTimes = response.data.filter(slot => slot.is_available);
+        setAvailableSlots(availableTimes);
+        setShowTimePicker(true);
+      } else {
+        Alert.alert('오류', '예약 가능한 시간을 불러올 수 없습니다.');
+      }
+    } catch (err) {
+      console.error('시간 조회 오류:', err);
+      Alert.alert('오류', err.message || '예약 가능한 시간을 불러올 수 없습니다.');
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
+  // 시간 선택
+  const handleTimeSelect = async (slot) => {
+    setSelectedSlot(slot);
+    setShowTimePicker(false);
+    
+    // 설문 질문 조회
+    try {
+      setLoadingSurvey(true);
+      const response = await getSurveyQuestions();
+      if (response.success) {
+        // options 필드가 JSON 문자열인 경우 파싱
+        const parsedQuestions = (response.data || []).map(question => {
+          if (question.options && typeof question.options === 'string') {
+            try {
+              question.options = JSON.parse(question.options);
+            } catch (e) {
+              console.error('options 파싱 오류:', e);
+              question.options = [];
+            }
+          }
+          return question;
+        });
+        setSurveyQuestions(parsedQuestions);
+        setShowSurvey(true);
+      } else {
+        Alert.alert('오류', '설문 질문을 불러올 수 없습니다.');
+      }
+    } catch (err) {
+      console.error('설문 질문 조회 오류:', err);
+      Alert.alert('오류', err.message || '설문 질문을 불러올 수 없습니다.');
+    } finally {
+      setLoadingSurvey(false);
+    }
+  };
+
+  // 설문 답변
+  const handleSurveyAnswer = (questionId, answer) => {
+    const newAnswer = {
+      question_id: questionId,
+      answer: answer,
+    };
+    
+    const updatedAnswers = [...surveyAnswers];
+    const existingIndex = updatedAnswers.findIndex(a => a.question_id === questionId);
+    
+    if (existingIndex >= 0) {
+      updatedAnswers[existingIndex] = newAnswer;
+    } else {
+      updatedAnswers.push(newAnswer);
+    }
+    
+    setSurveyAnswers(updatedAnswers);
     
     if (surveyStep < surveyQuestions.length - 1) {
       setSurveyStep(surveyStep + 1);
     } else {
-      Alert.alert('완료', '예약이 완료되었습니다!');
-      setShowSurvey(false);
-      setSurveyStep(0);
-      setSurveyAnswers([]);
+      // 설문 완료 후 예약 생성
+      handleCreateAppointment();
     }
   };
 
+  // 예약 생성
+  const handleCreateAppointment = async () => {
+    try {
+      setCreatingAppointment(true);
+      
+      const user = await getUser();
+      const appointmentData = {
+        clinic_id: selectedClinic.id,
+        slot_id: selectedSlot.id,
+        patient_name: user?.name || '홍길동', // 사용자 정보에서 가져오기
+        patient_phone: user?.phone || '010-0000-0000',
+        patient_email: user?.email || '',
+        symptoms: surveyAnswers.find(a => a.question_id === surveyQuestions.find(q => q.question_type === 'text')?.id)?.answer || '',
+        survey_answers: surveyAnswers,
+      };
+
+      if (user?.id) {
+        appointmentData.user_id = user.id;
+      }
+
+      const response = await createAppointment(appointmentData);
+      
+      if (response.success) {
+        Alert.alert('성공', '예약이 완료되었습니다!', [
+          {
+            text: '확인',
+            onPress: () => {
+              // 상태 초기화
+      setShowSurvey(false);
+      setSurveyStep(0);
+      setSurveyAnswers([]);
+              setSelectedClinic(null);
+              setSelectedDate(null);
+              setSelectedSlot(null);
+              // 예약 목록 새로고침
+              fetchAppointments();
+            },
+          },
+        ]);
+      } else {
+        Alert.alert('오류', response.message || '예약 생성에 실패했습니다.');
+      }
+    } catch (err) {
+      console.error('예약 생성 오류:', err);
+      Alert.alert('오류', err.message || '예약 생성에 실패했습니다.');
+    } finally {
+      setCreatingAppointment(false);
+    }
+  };
+
+  // 마커 클릭 시 해당 치과 카드로 스크롤
+  const handleMarkerTap = (clinicId) => {
+    // 풀스크린 모달 닫기
+    setShowFullscreenMap(false);
+    
+    // 약간의 지연 후 스크롤
+    setTimeout(() => {
+      const cardRef = clinicCardRefs.current[clinicId];
+      if (cardRef && scrollViewRef.current) {
+        cardRef.measureLayout(
+          scrollViewRef.current,
+          (x, y) => {
+            scrollViewRef.current.scrollTo({ y: y - 20, animated: true });
+          },
+          () => console.log('측정 실패')
+        );
+      }
+    }, 300);
+  };
+
+  // 치과 카드 클릭 시 지도 열고 해당 위치로 이동
+  const handleClinicCardTap = (clinic) => {
+    // 풀스크린 모달 열기
+    setShowFullscreenMap(true);
+    
+    // 지도가 렌더링된 후 해당 위치로 이동
+    setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.animateCameraTo({
+          latitude: parseFloat(clinic.latitude),
+          longitude: parseFloat(clinic.longitude),
+          zoom: 17,
+          duration: 1000,
+          easing: 'EaseInOut',
+        });
+      }
+    }, 500);
+  };
+
+  // 내 위치로 가기
+  const moveToMyLocation = (isFullscreen = false) => {
+    const targetRef = isFullscreen ? mapRef : smallMapRef;
+    if (targetRef.current && currentLocation) {
+      targetRef.current.animateCameraTo({
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        zoom: 16,
+        duration: 1000,
+        easing: 'EaseInOut',
+      });
+    }
+  };
+
+  // 전화 걸기
+  const handleCall = (clinic) => {
+    if (!clinic.phone) {
+      Alert.alert('알림', '전화번호가 등록되지 않은 병원입니다.');
+      return;
+    }
+
+    // 전화번호에서 공백과 하이픈 제거
+    const phoneNumber = clinic.phone.replace(/[\s-]/g, '');
+    
+    Alert.alert(
+      '전화 걸기',
+      `${clinic.name}로 전화를 걸까요?\n\n${clinic.phone}`,
+      [
+        {
+          text: '취소',
+          style: 'cancel',
+        },
+        {
+          text: '전화 걸기',
+          onPress: () => {
+            Linking.openURL(`tel:${phoneNumber}`).catch((err) => {
+              Alert.alert('오류', '전화를 걸 수 없습니다.');
+              console.error('전화 걸기 오류:', err);
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  // KST 기준으로 날짜 문자열을 포맷팅 (날짜 변경 없이)
+  const formatDateKST = (dateString) => {
+    if (!dateString || typeof dateString !== 'string') {
+      return dateString || '';
+    }
+
+    // YYYY-MM-DD 형식의 문자열을 파싱
+    const parts = dateString.split('-');
+    if (parts.length !== 3) {
+      return dateString;
+    }
+
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+
+    // 유효성 검사
+    if (isNaN(year) || isNaN(month) || isNaN(day)) {
+      return dateString;
+    }
+
+    // 로컬 시간대로 Date 객체 생성 (시간대 변환 없이)
+    // 이렇게 하면 UTC 변환 없이 로컬 시간대로 처리됨
+    const date = new Date(year, month - 1, day);
+
+    // Date 객체 유효성 검사
+    if (isNaN(date.getTime())) {
+      return dateString;
+    }
+
+    // 한국어 형식으로 포맷팅 (KST 기준)
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'short',
+      timeZone: 'Asia/Seoul' // KST 명시
+    });
+  };
+
+  // 날짜 선택 모달
+  const renderDatePicker = () => (
+    <Modal
+      visible={showDatePicker}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowDatePicker(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>예약 날짜 선택</Text>
+            <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+              <Icon name="close" size={24} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent}>
+            {loadingDates ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#3b82f6" />
+                <Text style={styles.loadingText}>날짜를 불러오는 중...</Text>
+              </View>
+            ) : availableDates.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Icon name="event" size={48} color="#9ca3af" />
+                <Text style={styles.emptyMessage}>예약 가능한 날짜가 없습니다.</Text>
+              </View>
+            ) : (
+              <View style={styles.dateList}>
+                {availableDates.map((date, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.dateItem,
+                      selectedDate === date && styles.dateItemSelected
+                    ]}
+                    onPress={() => handleDateSelect(date)}
+                  >
+                    <Text style={[
+                      styles.dateText,
+                      selectedDate === date && styles.dateTextSelected
+                    ]}>
+                      {formatDateKST(date)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // 시간 선택 모달
+  const renderTimePicker = () => (
+    <Modal
+      visible={showTimePicker}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setShowTimePicker(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>예약 시간 선택</Text>
+            <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+              <Icon name="close" size={24} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalContent}>
+            {loadingSlots ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#3b82f6" />
+                <Text style={styles.loadingText}>시간을 불러오는 중...</Text>
+              </View>
+            ) : availableSlots.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Icon name="schedule" size={48} color="#9ca3af" />
+                <Text style={styles.emptyMessage}>예약 가능한 시간이 없습니다.</Text>
+              </View>
+            ) : (
+              <View style={styles.timeList}>
+                {availableSlots.map((slot) => (
+                  <TouchableOpacity
+                    key={slot.id}
+                    style={[
+                      styles.timeItem,
+                      selectedSlot?.id === slot.id && styles.timeItemSelected
+                    ]}
+                    onPress={() => handleTimeSelect(slot)}
+                  >
+                    <Text style={[
+                      styles.timeText,
+                      selectedSlot?.id === slot.id && styles.timeTextSelected
+                    ]}>
+                      {slot.time_slot.substring(0, 5)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // 설문 화면
   if (showSurvey) {
+    const currentQuestion = surveyQuestions[surveyStep];
+    if (!currentQuestion) {
+      return (
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+        </View>
+      );
+    }
+
     return (
       <View style={styles.container}>
         <View style={styles.surveyHeader}>
@@ -93,116 +615,451 @@ export default function AppointmentScreen() {
 
         <View style={styles.surveyCard}>
           <Text style={styles.surveyQuestion}>
-            {surveyQuestions[surveyStep].question}
+            {currentQuestion.question}
           </Text>
           <View style={styles.surveyOptions}>
-            {surveyQuestions[surveyStep].options.map((option, index) => (
-              <TouchableOpacity
-                key={index}
-                onPress={() => handleSurveyAnswer(option)}
-                style={styles.surveyOption}
-              >
-                <Text style={styles.surveyOptionText}>{option}</Text>
-              </TouchableOpacity>
-            ))}
+            {currentQuestion.question_type === 'yes_no' ? (
+              <>
+                <TouchableOpacity
+                  onPress={() => handleSurveyAnswer(currentQuestion.id, 'yes')}
+                  style={styles.surveyOption}
+                >
+                  <Text style={styles.surveyOptionText}>예</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleSurveyAnswer(currentQuestion.id, 'no')}
+                  style={styles.surveyOption}
+                >
+                  <Text style={styles.surveyOptionText}>아니오</Text>
+                </TouchableOpacity>
+              </>
+            ) : currentQuestion.question_type === 'multiple_choice' && currentQuestion.options ? (
+              (() => {
+                // options가 문자열인 경우 파싱
+                let optionsArray = currentQuestion.options;
+                if (typeof optionsArray === 'string') {
+                  try {
+                    optionsArray = JSON.parse(optionsArray);
+                  } catch (e) {
+                    console.error('options 파싱 오류:', e);
+                    optionsArray = [];
+                  }
+                }
+                
+                return Array.isArray(optionsArray) && optionsArray.length > 0 ? (
+                  optionsArray.map((option, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => handleSurveyAnswer(currentQuestion.id, option)}
+                      style={styles.surveyOption}
+                    >
+                      <Text style={styles.surveyOptionText}>{option}</Text>
+                    </TouchableOpacity>
+                  ))
+                ) : (
+                  <View style={styles.textInputContainer}>
+                    <Text style={styles.textInputLabel}>선택지가 없습니다.</Text>
+                  </View>
+                );
+              })()
+            ) : (
+              <View style={styles.textInputContainer}>
+                <Text style={styles.textInputLabel}>답변을 입력해주세요</Text>
+                {/* 텍스트 입력은 나중에 구현 가능 */}
+              </View>
+            )}
           </View>
         </View>
 
         <View style={styles.surveyFooter}>
           <TouchableOpacity
-            onPress={() => setShowSurvey(false)}
+            onPress={() => {
+              if (surveyStep > 0) {
+                setSurveyStep(surveyStep - 1);
+              } else {
+                setShowSurvey(false);
+                setShowTimePicker(true);
+              }
+            }}
             style={styles.skipButton}
           >
-            <Text style={styles.skipButtonText}>나중에 하기</Text>
+            <Text style={styles.skipButtonText}>이전</Text>
           </TouchableOpacity>
+          {creatingAppointment && (
+            <ActivityIndicator size="small" color="#3b82f6" style={{ marginTop: 16 }} />
+          )}
         </View>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
+      <ScrollView 
+        ref={scrollViewRef} 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#3b82f6']}
+            tintColor="#3b82f6"
+          />
+        }
+      >
       {/* 지도 영역 */}
       <View style={styles.section}>
+        <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>근처 치과 찾기</Text>
-        <View style={styles.mapCard}>
-          <View style={styles.mapContainer}>
-            <View style={styles.mapOverlay}>
-              <Text style={styles.mapIcon}>🗺️</Text>
-              <Text style={styles.mapText}>현재 위치 기준</Text>
-            </View>
-          </View>
+          <TouchableOpacity 
+            style={styles.appointmentButton}
+            onPress={() => setShowAppointmentsModal(true)}
+          >
+            <Icon name="event-note" size={24} color="#ffffff" />
+            {appointments.length > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{appointments.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
+        <TouchableOpacity 
+          style={styles.mapCard}
+          onPress={() => setShowFullscreenMap(true)}
+          activeOpacity={0.8}
+        >
+        <NaverMapView
+            ref={smallMapRef}
+            key={`map-${currentLocation.latitude}-${currentLocation.longitude}`}
+            style={styles.mapContainer}
+            initialCamera={{
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              zoom: 15,
+            }}
+          >
+            {/* 현재 위치 마커 */}
+            <NaverMapMarkerOverlay
+              latitude={currentLocation.latitude}
+              longitude={currentLocation.longitude}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.currentLocationMarker}>
+                <View style={styles.currentLocationDot} />
+              </View>
+            </NaverMapMarkerOverlay>
+
+            {/* 치과 마커들 */}
+            {clinics.map((clinic, index) => (
+              <NaverMapMarkerOverlay
+                key={clinic.id}
+                latitude={parseFloat(clinic.latitude)}
+                longitude={parseFloat(clinic.longitude)}
+                anchor={{ x: 0.5, y: 1 }}
+                image={{ symbol: 'blue' }}
+                caption={{
+                  text: `${index + 1}. ${clinic.name}`,
+                  textSize: 12,
+                  color: '#374151',
+                  haloColor: '#ffffff',
+                }}
+                subCaption={{
+                  text: clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : '',
+                  textSize: 10,
+                  color: '#6b7280',
+                  haloColor: '#ffffff',
+                }}
+              />
+            ))}
+          </NaverMapView>
+          <View style={styles.mapOverlayHint}>
+            <Text style={styles.mapOverlayText}>📍 지도를 탭하여 확대</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.myLocationButton}
+            onPress={(e) => {
+              e.stopPropagation();
+              moveToMyLocation(false);
+            }}
+          >
+            <Icon name="my-location" size={20} color="#3b82f6" />
+          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
+
+      {/* 풀스크린 지도 모달 */}
+      <Modal
+        visible={showFullscreenMap}
+        animationType="slide"
+        onRequestClose={() => setShowFullscreenMap(false)}
+      >
+        <View style={styles.fullscreenMapContainer}>
+          <NaverMapView
+            ref={mapRef}
+            key={`fullscreen-map-${currentLocation.latitude}-${currentLocation.longitude}`}
+            style={styles.fullscreenMap}
+            initialCamera={{
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              zoom: 15,
+            }}
+          >
+            {/* 현재 위치 마커 */}
+            <NaverMapMarkerOverlay
+              latitude={currentLocation.latitude}
+              longitude={currentLocation.longitude}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.currentLocationMarker}>
+                <View style={styles.currentLocationDot} />
+              </View>
+            </NaverMapMarkerOverlay>
+
+            {/* 치과 마커들 */}
+            {clinics.map((clinic, index) => (
+              <NaverMapMarkerOverlay
+                key={clinic.id}
+                latitude={parseFloat(clinic.latitude)}
+                longitude={parseFloat(clinic.longitude)}
+                anchor={{ x: 0.5, y: 1 }}
+                image={{ symbol: 'blue' }}
+                caption={{
+                  text: `${index + 1}. ${clinic.name}`,
+                  textSize: 14,
+                  color: '#374151',
+                  haloColor: '#ffffff',
+                }}
+                subCaption={{
+                  text: clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : '',
+                  textSize: 12,
+                  color: '#6b7280',
+                  haloColor: '#ffffff',
+                }}
+                onTap={() => handleMarkerTap(clinic.id)}
+              />
+            ))}
+          </NaverMapView>
+          <TouchableOpacity
+            style={styles.closeMapButton}
+            onPress={() => setShowFullscreenMap(false)}
+          >
+            <Icon name="close" size={24} color="#374151" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.myLocationButtonFullscreen}
+            onPress={() => moveToMyLocation(true)}
+          >
+            <Icon name="my-location" size={24} color="#3b82f6" />
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       {/* 치과 리스트 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>예약 가능한 치과</Text>
+        <Text style={styles.sectionTitle}>주변 치과 ({clinics.length})</Text>
+        <View style={styles.divider} />
+        
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#3b82f6" />
+            <Text style={styles.loadingText}>주변 치과를 검색하는 중...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Icon name="error" size={48} color="#ef4444" />
+            <Text style={styles.errorMessage}>{error}</Text>
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={() => fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude)}
+            >
+              <Text style={styles.retryButtonText}>다시 시도</Text>
+            </TouchableOpacity>
+          </View>
+        ) : clinics.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Icon name="sentiment-dissatisfied" size={48} color="#9ca3af" />
+            <Text style={styles.emptyMessage}>주변에 치과가 없습니다.</Text>
+          </View>
+        ) : (
         <View style={styles.clinicList}>
-          {mockClinics.map((clinic) => (
-            <View key={clinic.id} style={styles.clinicCard}>
+            {clinics.map((clinic, index) => (
+              <View 
+                key={clinic.id} 
+                ref={(ref) => clinicCardRefs.current[clinic.id] = ref}
+                style={styles.clinicCard}
+              >
               <View style={styles.clinicInfo}>
                 <View style={styles.clinicHeader}>
+                    <TouchableOpacity 
+                      style={styles.clinicNameRow}
+                      onPress={() => handleClinicCardTap(clinic)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.clinicNumberBadge}>
+                        <Text style={styles.clinicNumberText}>{index + 1}</Text>
+                      </View>
                   <Text style={styles.clinicName}>{clinic.name}</Text>
+                      {clinic.is_partner === 1 && (
+                        <View style={styles.partnerBadge}>
+                          <Text style={styles.partnerBadgeText}>협약</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
                   <View style={styles.clinicRating}>
-                    <Text style={styles.starIcon}>⭐</Text>
-                    <Text style={styles.ratingText}>{clinic.rating}</Text>
+                      <Icon name="star" size={16} color="#fbbf24" />
+                      <Text style={styles.ratingText}>{clinic.rating || 'N/A'}</Text>
                     <Text style={styles.separator}>•</Text>
-                    <Text style={styles.distanceText}>{clinic.distance}</Text>
+                      <Text style={styles.distanceText}>
+                        {clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : 'N/A'}
+                      </Text>
                   </View>
                 </View>
 
                 <View style={styles.clinicDetails}>
                   <View style={styles.clinicDetail}>
-                    <Text style={styles.detailIcon}>📍</Text>
+                      <Icon name="location-on" size={16} color="#6b7280" />
                     <Text style={styles.detailText}>{clinic.address}</Text>
                   </View>
+                    {clinic.phone && (
                   <View style={styles.clinicDetail}>
-                    <Text style={styles.detailIcon}>📞</Text>
+                        <Icon name="phone" size={16} color="#6b7280" />
                     <Text style={styles.detailText}>{clinic.phone}</Text>
                   </View>
+                    )}
                 </View>
 
+                  {clinic.availableSlots && clinic.availableSlots.length > 0 && (
                 <View style={styles.slotsSection}>
                   <Text style={styles.slotsLabel}>예약 가능 시간</Text>
                   <View style={styles.slotsContainer}>
-                    {clinic.availableSlots.map((slot, index) => (
-                      <View key={index} style={styles.slotTag}>
+                        {clinic.availableSlots.map((slot, slotIndex) => (
+                          <View key={slotIndex} style={styles.slotTag}>
                         <Text style={styles.slotText}>{slot}</Text>
                       </View>
                     ))}
                   </View>
                 </View>
+                  )}
 
+                  {clinic.is_partner === 1 ? (
                 <TouchableOpacity
                   onPress={() => handleBooking(clinic)}
                   style={styles.bookingButton}
                 >
-                  <Text style={styles.bookingButtonText}>📅 예약하기</Text>
+                      <Icon name="event" size={18} color="#ffffff" style={styles.buttonIcon} />
+                      <Text style={styles.bookingButtonText}>예약하기</Text>
                 </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => handleCall(clinic)}
+                      style={styles.callButton}
+                    >
+                      <Icon name="phone" size={18} color="#ffffff" style={styles.buttonIcon} />
+                      <Text style={styles.callButtonText}>전화 예약하기</Text>
+                    </TouchableOpacity>
+                  )}
               </View>
             </View>
           ))}
         </View>
+        )}
       </View>
+      </ScrollView>
 
-      {/* 예약 현황 */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>예약 현황</Text>
-        <View style={styles.appointmentCard}>
+      {/* 날짜 선택 모달 */}
+      {renderDatePicker()}
+
+      {/* 시간 선택 모달 */}
+      {renderTimePicker()}
+
+      {/* 예약 목록 모달 */}
+      <Modal
+        visible={showAppointmentsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowAppointmentsModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>내 예약 확인 ({appointments.length})</Text>
+              <TouchableOpacity onPress={() => setShowAppointmentsModal(false)}>
+                <Icon name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent}>
+              {appointmentsLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#3b82f6" />
+                  <Text style={styles.loadingText}>예약 정보를 불러오는 중...</Text>
+                </View>
+              ) : appointmentsError ? (
+                <View style={styles.errorContainer}>
+                  <Icon name="error" size={48} color="#ef4444" />
+                  <Text style={styles.errorMessage}>{appointmentsError}</Text>
+                  <TouchableOpacity 
+                    style={styles.retryButton}
+                    onPress={fetchAppointments}
+                  >
+                    <Text style={styles.retryButtonText}>다시 시도</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : appointments.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Icon name="event" size={48} color="#9ca3af" />
+                  <Text style={styles.emptyMessage}>예약 내역이 없습니다.</Text>
+                </View>
+              ) : (
+                <View style={styles.appointmentList}>
+                  {appointments.map((appointment) => (
+                    <View key={appointment.id} style={styles.appointmentCard}>
           <View style={styles.appointmentContent}>
-            <View style={styles.appointmentIcon}>
-              <Text style={styles.appointmentIconText}>✅</Text>
+                        <View style={[
+                          styles.appointmentIcon,
+                          { backgroundColor: 
+                            appointment.status === 'confirmed' ? '#dcfce7' :
+                            appointment.status === 'completed' ? '#e0e7ff' :
+                            appointment.status === 'cancelled' ? '#fee2e2' :
+                            '#fef3c7'
+                          }
+                        ]}>
+                          <Icon
+                            name={
+                              appointment.status === 'confirmed' ? 'check-circle' :
+                              appointment.status === 'completed' ? 'check-circle' :
+                              appointment.status === 'cancelled' ? 'cancel' :
+                              'schedule'
+                            }
+                            size={20}
+                            color={
+                              appointment.status === 'confirmed' ? '#16a34a' :
+                              appointment.status === 'completed' ? '#6366f1' :
+                              appointment.status === 'cancelled' ? '#ef4444' :
+                              '#f59e0b'
+                            }
+                          />
             </View>
             <View style={styles.appointmentInfo}>
-              <Text style={styles.appointmentClinic}>서울치과의원</Text>
-              <Text style={styles.appointmentDate}>9월 25일 14:00</Text>
+                          <Text style={styles.appointmentClinic}>{appointment.clinic_name}</Text>
+                          <Text style={styles.appointmentDate}>
+                            {appointment.appointment_date} {appointment.appointment_time ? appointment.appointment_time.substring(0, 5) : ''}
+                          </Text>
+                          {appointment.symptoms && (
+                            <Text style={styles.appointmentSymptoms}>증상: {appointment.symptoms}</Text>
+                          )}
             </View>
           </View>
-          <Text style={styles.appointmentArrow}>→</Text>
+                      <Icon name="chevron-right" size={20} color="#9ca3af" />
         </View>
+                  ))}
       </View>
+              )}
     </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -210,6 +1067,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  modalCloseButton: {
+    fontSize: 28,
+    color: '#6b7280',
+    fontWeight: '300',
+  },
+  modalContent: {
+    padding: 16,
   },
   surveyHeader: {
     padding: 16,
@@ -282,11 +1175,56 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 24,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     color: '#374151',
     fontWeight: '600',
-    marginBottom: 16,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginVertical: 12,
+  },
+  appointmentButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    zIndex: 10,
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   mapCard: {
     backgroundColor: 'white',
@@ -310,6 +1248,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  mapOverlayHint: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  mapOverlayText: {
+    color: 'white',
+    fontSize: 14,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
   mapIcon: {
     fontSize: 32,
     marginBottom: 8,
@@ -317,6 +1271,194 @@ const styles = StyleSheet.create({
   mapText: {
     color: 'white',
     fontSize: 16,
+  },
+  fullscreenMapContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  fullscreenMap: {
+    flex: 1,
+  },
+  closeMapButton: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    width: 40,
+    height: 40,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  closeMapButtonText: {
+    fontSize: 24,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  myLocationButton: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    width: 40,
+    height: 40,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  myLocationButtonFullscreen: {
+    position: 'absolute',
+    bottom: 50,
+    left: 16,
+    width: 48,
+    height: 48,
+    backgroundColor: 'white',
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  currentLocationMarker: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currentLocationDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#3b82f6',
+    borderWidth: 3,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  clinicMarker: {
+    alignItems: 'center',
+  },
+  clinicMarkerContent: {
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  clinicMarkerText: {
+    fontSize: 20,
+  },
+  clinicMarkerArrow: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderStyle: 'solid',
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#ef4444',
+    marginTop: -2,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  errorText: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  emptyText: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  emptyMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
   },
   clinicList: {
     gap: 16,
@@ -334,11 +1476,42 @@ const styles = StyleSheet.create({
   clinicHeader: {
     marginBottom: 8,
   },
+  clinicNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  clinicNumberBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clinicNumberText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   clinicName: {
     color: '#374151',
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
+    flex: 1,
+  },
+  partnerBadge: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  partnerBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '700',
   },
   clinicRating: {
     flexDirection: 'row',
@@ -405,11 +1578,34 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
   },
   bookingButtonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  buttonIcon: {
+    marginRight: 0,
+  },
+  callButton: {
+    backgroundColor: '#6b7280',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  callButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  appointmentList: {
+    gap: 12,
   },
   appointmentCard: {
     backgroundColor: 'white',
@@ -449,9 +1645,77 @@ const styles = StyleSheet.create({
   appointmentDate: {
     fontSize: 14,
     color: '#6b7280',
+    marginTop: 2,
+  },
+  appointmentSymptoms: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 4,
   },
   appointmentArrow: {
     color: '#9ca3af',
     fontSize: 20,
+  },
+  dateList: {
+    gap: 12,
+  },
+  dateItem: {
+    padding: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  dateItemSelected: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  dateTextSelected: {
+    color: '#1d4ed8',
+    fontWeight: '600',
+  },
+  timeList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  timeItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  timeItemSelected: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+  },
+  timeText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  timeTextSelected: {
+    color: '#1d4ed8',
+    fontWeight: '600',
+  },
+  textInputContainer: {
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: 'white',
+  },
+  textInputLabel: {
+    fontSize: 14,
+    color: '#6b7280',
   },
 });
