@@ -95,12 +95,12 @@ export default function PhotoAnalysisComponent({ onReset }) {
   }, []);
 
   /**
-   * 이미지 추가 및 즉시 업로드
+   * 이미지 추가 (로컬에만 저장, 업로드는 나중에)
    */
   const addImage = useCallback(async (asset, position) => {
     const imageId = Date.now();
     
-    // 이미지 추가 (업로드 중 상태)
+    // 이미지 추가 (대기 중 상태)
     setImages(prev => {
       const newImages = [...prev];
       newImages.push({
@@ -109,65 +109,12 @@ export default function PhotoAnalysisComponent({ onReset }) {
         position,
         uploadedImageId: null,
         analysisResult: null,
-        status: 'uploading', // 'uploading' | 'uploaded' | 'analyzing' | 'completed' | 'failed'
+        status: 'pending', // 'pending' | 'uploading' | 'uploaded' | 'analyzing' | 'completed' | 'failed'
         error: null,
       });
       return newImages;
     });
     setPickerError(null);
-
-    // 즉시 업로드 시작
-    try {
-      const user = await getUser();
-      const userId = user?.id || null;
-
-      setImages(prev => prev.map(i => 
-        i.id === imageId ? { ...i, status: 'uploading' } : i
-      ));
-
-      const uploadResponse = await uploadImage(
-        asset,
-        {
-          user_id: userId,
-          image_type: 'oral_care',
-          position: position,
-        },
-        (progress) => {
-          // 개별 이미지 업로드 진행률 (선택사항)
-          console.log(`이미지 ${imageId} 업로드 진행률: ${progress}%`);
-        }
-      );
-
-      if (!uploadResponse.success || !uploadResponse.data?.image_id) {
-        throw new Error(uploadResponse.message || '이미지 업로드에 실패했습니다.');
-      }
-
-      const uploadedImageId = uploadResponse.data.image_id;
-
-      // 업로드 완료 상태로 변경
-      setImages(prev => prev.map(i => 
-        i.id === imageId 
-          ? { ...i, uploadedImageId, status: 'uploaded' } 
-          : i
-      ));
-    } catch (error) {
-      console.error('이미지 업로드 오류:', error);
-      
-      let errorMessage = '이미지 업로드 중 오류가 발생했습니다.';
-      if (error.status === 0) {
-        errorMessage = '네트워크 연결을 확인해주세요.';
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      setImages(prev => prev.map(i => 
-        i.id === imageId 
-          ? { ...i, status: 'failed', error: errorMessage } 
-          : i
-      ));
-      
-      setPickerError(errorMessage);
-    }
   }, []);
 
   /**
@@ -198,22 +145,163 @@ export default function PhotoAnalysisComponent({ onReset }) {
 
 
   /**
-   * 분석 시작 (이미 업로드된 이미지들)
+   * 이미지 업로드 및 분석 시작
    */
   const startAnalysis = useCallback(async () => {
-    // 업로드 완료된 이미지만 필터링
-    const uploadedImages = images.filter(img => img.status === 'uploaded' && img.uploadedImageId);
-    
-    if (uploadedImages.length === 0) {
-      Alert.alert('알림', '분석할 이미지가 없습니다. 모든 이미지가 업로드 완료되었는지 확인해주세요.');
+    // 이미지 개수 확인 (3개가 아니면 경고)
+    if (images.length !== TOTAL_IMAGES) {
+      Alert.alert(
+        '사진 부족',
+        `사진 ${TOTAL_IMAGES}장을 모두 촬영해주세요. (현재: ${images.length}장)`
+      );
       return;
     }
 
+    // 업로드 대기 중인 이미지만 필터링
+    const pendingImages = images.filter(img => img.status === 'pending' || img.status === 'failed');
+    
+    if (pendingImages.length === 0) {
+      // 이미 업로드된 이미지가 있는 경우 (재시도)
+      const uploadedImages = images.filter(img => img.status === 'uploaded' && img.uploadedImageId);
+      if (uploadedImages.length === TOTAL_IMAGES) {
+        // 바로 분석 시작
+        setIsAnalyzing(true);
+        setUploadProgress(50);
+        await startAnalysisForUploadedImages(uploadedImages);
+        return;
+      }
+    }
+
     try {
-      setIsAnalyzing(true);
+      setIsUploading(true);
+      setIsAnalyzing(false);
       setUploadProgress(0);
       setPickerError(null);
 
+      const user = await getUser();
+      const userId = user?.id || null;
+
+      // 모든 이미지 업로드 시작
+      const uploadPromises = images.map(async (img) => {
+        // 이미 업로드된 이미지는 스킵
+        if (img.uploadedImageId) {
+          return { imageId: img.id, uploadedImageId: img.uploadedImageId };
+        }
+
+        // 업로드 중 상태로 변경
+        setImages(prev => prev.map(i => 
+          i.id === img.id ? { ...i, status: 'uploading' } : i
+        ));
+
+        try {
+          const uploadResponse = await uploadImage(
+            img.asset,
+            {
+              user_id: userId,
+              image_type: 'oral_care',
+              position: img.position,
+            },
+            (progress) => {
+              // 전체 업로드 진행률 계산
+              const uploadedCount = images.filter(i => 
+                i.status === 'uploaded' || (i.id === img.id && progress === 100)
+              ).length;
+              const uploadProgress = (uploadedCount / images.length) * 50; // 업로드는 0-50%
+              setUploadProgress(uploadProgress);
+            }
+          );
+
+          if (!uploadResponse.success || !uploadResponse.data?.image_id) {
+            throw new Error(uploadResponse.message || '이미지 업로드에 실패했습니다.');
+          }
+
+          const uploadedImageId = uploadResponse.data.image_id;
+
+          // 업로드 완료 상태로 변경
+          setImages(prev => prev.map(i => 
+            i.id === img.id 
+              ? { ...i, uploadedImageId, status: 'uploaded' } 
+              : i
+          ));
+
+          return { imageId: img.id, uploadedImageId };
+        } catch (error) {
+          console.error(`이미지 ${img.id} 업로드 오류:`, error);
+          
+          let errorMessage = '이미지 업로드 중 오류가 발생했습니다.';
+          if (error.status === 0) {
+            errorMessage = '네트워크 연결을 확인해주세요.';
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+
+          setImages(prev => prev.map(i => 
+            i.id === img.id 
+              ? { ...i, status: 'failed', error: errorMessage } 
+              : i
+          ));
+          
+          throw error;
+        }
+      });
+
+      const uploadResults = await Promise.allSettled(uploadPromises);
+      
+      // 업로드 실패한 이미지 확인
+      const failedUploads = uploadResults.filter(result => result.status === 'rejected');
+      if (failedUploads.length > 0) {
+        Alert.alert(
+          '업로드 실패',
+          `${failedUploads.length}장의 이미지 업로드에 실패했습니다. 다시 시도해주세요.`
+        );
+        setIsUploading(false);
+        return;
+      }
+
+      // 업로드 완료 - 분석 시작
+      const uploadedImages = images.map(img => {
+        const result = uploadResults.find(r => 
+          r.status === 'fulfilled' && r.value.imageId === img.id
+        );
+        if (result && result.status === 'fulfilled') {
+          return { ...img, uploadedImageId: result.value.uploadedImageId, status: 'uploaded' };
+        }
+        return img;
+      }).filter(img => img.uploadedImageId);
+
+      setIsUploading(false);
+      setIsAnalyzing(true);
+      setUploadProgress(50); // 분석 시작 시점
+
+      // 분석 시작
+      await startAnalysisForUploadedImages(uploadedImages);
+    } catch (error) {
+      console.error('업로드/분석 오류:', error);
+      setIsUploading(false);
+      setIsAnalyzing(false);
+      setUploadProgress(0);
+      
+      let errorMessage = '업로드 중 오류가 발생했습니다.';
+      
+      if (error.status === 0) {
+        errorMessage = '네트워크 연결을 확인해주세요. 백엔드 서버가 실행 중인지 확인해주세요.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      } else if (error.status === 500) {
+        errorMessage = '서버 오류가 발생했습니다. 백엔드 서버 로그를 확인해주세요.';
+      }
+      
+      setPickerError(errorMessage);
+    }
+  }, [images, formatAnalysisResult]);
+
+  /**
+   * 업로드 완료된 이미지들의 분석 시작
+   */
+  const startAnalysisForUploadedImages = useCallback(async (uploadedImages) => {
+    try {
+      let completedCount = 0;
+      
       // 모든 이미지의 분석 상태 폴링 시작
       const pollPromises = uploadedImages.map((img) => {
         // 분석 중 상태로 변경
@@ -226,26 +314,25 @@ export default function PhotoAnalysisComponent({ onReset }) {
           maxAttempts: 60,
           onStatusChange: (status, attemptCount) => {
             console.log(`이미지 ${img.id} 분석 상태: ${status} (시도 ${attemptCount}회)`);
-            // 진행률 업데이트 (분석 단계: 0-100%)
-            const completedCount = images.filter(i => i.status === 'completed').length;
-            const progress = ((completedCount + 1) / uploadedImages.length) * 100;
-            setUploadProgress(Math.min(progress, 100));
           },
         })
           .then((statusResponse) => {
             if (statusResponse.success && statusResponse.data?.analysis) {
               const formattedResult = formatAnalysisResult(statusResponse.data);
-              setImages(prev => prev.map(i => 
-                i.id === img.id 
-                  ? { ...i, analysisResult: formattedResult, status: 'completed' } 
-                  : i
-              ));
+              setImages(prev => {
+                const updated = prev.map(i => 
+                  i.id === img.id 
+                    ? { ...i, analysisResult: formattedResult, status: 'completed' } 
+                    : i
+                );
+                // 진행률 업데이트 (분석 단계: 50-100%)
+                const newCompletedCount = updated.filter(i => i.status === 'completed').length;
+                const progress = 50 + (newCompletedCount / uploadedImages.length) * 50;
+                setUploadProgress(Math.min(progress, 100));
+                return updated;
+              });
               
-              // 진행률 업데이트
-              const completedCount = images.filter(i => i.status === 'completed').length + 1;
-              const progress = (completedCount / uploadedImages.length) * 100;
-              setUploadProgress(Math.min(progress, 100));
-              
+              completedCount++;
               return { imageId: img.id, result: formattedResult };
             } else {
               throw new Error(statusResponse.message || '분석 결과를 가져올 수 없습니다.');
@@ -268,14 +355,15 @@ export default function PhotoAnalysisComponent({ onReset }) {
       setIsAnalyzing(false);
 
       // 모든 분석이 완료되었는지 확인
+      const finalImages = imagesRef.current;
       const allCompleted = uploadedImages.every(img => {
-        const currentImg = images.find(i => i.id === img.id);
+        const currentImg = finalImages.find(i => i.id === img.id);
         return currentImg?.status === 'completed' || currentImg?.status === 'failed';
       });
 
       if (allCompleted) {
         const failedCount = uploadedImages.filter(img => {
-          const currentImg = images.find(i => i.id === img.id);
+          const currentImg = finalImages.find(i => i.id === img.id);
           return currentImg?.status === 'failed';
         }).length;
         
@@ -305,7 +393,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
       
       setPickerError(errorMessage);
     }
-  }, [images, formatAnalysisResult]);
+  }, [formatAnalysisResult]);
 
   const handlePickerResult = useCallback(
     async (response, position) => {
@@ -371,49 +459,23 @@ export default function PhotoAnalysisComponent({ onReset }) {
   );
 
   const handleCameraClose = useCallback(async () => {
-    // 마지막으로 촬영한 이미지가 있으면 삭제
+    // 마지막으로 촬영한 이미지가 있으면 삭제 (업로드 전이므로 로컬에서만 제거)
     if (lastCapturedImageId) {
-      // 업로드 완료를 기다리기 (최대 5초)
-      let attempts = 0;
-      const maxAttempts = 20; // 0.25초 간격으로 20회 = 5초
+      const lastImage = imagesRef.current.find(img => img.id === lastCapturedImageId);
       
-      const checkAndDelete = async () => {
-        const lastImage = imagesRef.current.find(img => img.id === lastCapturedImageId);
-        
-        if (lastImage && lastImage.uploadedImageId) {
-          // 업로드 완료 - 삭제
-          try {
-            await deleteImage(lastImage.uploadedImageId);
-            console.log('✅ 이미지 삭제 완료 (Cloudinary & DB):', lastImage.uploadedImageId);
-            // 로컬 상태에서도 제거
-            setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
-          } catch (error) {
-            console.error('❌ 이미지 삭제 오류:', error);
-            // 삭제 실패해도 로컬 상태에서 제거
-            setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
-          }
-          setLastCapturedImageId(null);
-          return true;
-        } else if (lastImage && lastImage.status === 'failed') {
-          // 업로드 실패 - 로컬 상태에서만 제거
-          setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
-          setLastCapturedImageId(null);
-          return true;
-        } else if (attempts < maxAttempts) {
-          // 아직 업로드 중 - 다시 확인
-          attempts++;
-          setTimeout(checkAndDelete, 250);
-          return false;
-        } else {
-          // 타임아웃 - 로컬 상태에서만 제거
-          console.warn('⚠️ 이미지 업로드 완료 대기 시간 초과 - 로컬에서만 제거');
-          setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
-          setLastCapturedImageId(null);
-          return true;
+      // 업로드 완료된 이미지인 경우에만 서버에서 삭제
+      if (lastImage && lastImage.uploadedImageId) {
+        try {
+          await deleteImage(lastImage.uploadedImageId);
+          console.log('✅ 이미지 삭제 완료 (Cloudinary & DB):', lastImage.uploadedImageId);
+        } catch (error) {
+          console.error('❌ 이미지 삭제 오류:', error);
         }
-      };
+      }
       
-      await checkAndDelete();
+      // 로컬 상태에서 제거
+      setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+      setLastCapturedImageId(null);
     }
     
     setCameraModalVisible(false);
@@ -421,15 +483,34 @@ export default function PhotoAnalysisComponent({ onReset }) {
   }, [lastCapturedImageId]);
 
   const handleAddPhoto = useCallback((position) => {
-    if (images.length >= TOTAL_IMAGES) {
-      Alert.alert('알림', `최대 ${TOTAL_IMAGES}장의 사진만 촬영할 수 있습니다.`);
-      return;
-    }
-
     // 이미 해당 위치의 사진이 있는지 확인
     const existingImage = images.find(img => img.position === position);
     if (existingImage) {
-      Alert.alert('알림', '이미 해당 위치의 사진이 있습니다.');
+      Alert.alert(
+        '알림', 
+        `${POSITION_LABELS[position]} 사진은 이미 촬영되었습니다.\n기존 사진을 삭제하고 다시 촬영하시겠습니까?`,
+        [
+          { 
+            text: '기존 사진 삭제 후 촬영', 
+            onPress: async () => {
+              await removeImage(existingImage.id);
+              // 삭제 후 바로 촬영 옵션 표시
+              Alert.alert(
+                '사진 선택',
+                `${POSITION_LABELS[position]} 사진을 촬영하거나 앨범에서 선택해주세요.`,
+                [
+                  { text: '카메라로 촬영', onPress: () => handleLaunch('camera', position) },
+                  { text: '앨범에서 선택', onPress: () => handleLaunch('library', position) },
+                  { text: '취소', style: 'cancel' },
+                ],
+                { cancelable: true }
+              );
+            }
+          },
+          { text: '취소', style: 'cancel' },
+        ],
+        { cancelable: true }
+      );
       return;
     }
 
@@ -443,12 +524,10 @@ export default function PhotoAnalysisComponent({ onReset }) {
       ],
       { cancelable: true }
     );
-  }, [images, handleLaunch]);
+  }, [images, handleLaunch, removeImage]);
 
 
-  const allUploaded = images.length === TOTAL_IMAGES && images.every(img => 
-    img.status === 'uploaded' || img.status === 'analyzing' || img.status === 'completed' || img.status === 'failed'
-  );
+  const allImagesReady = images.length === TOTAL_IMAGES;
   const hasResults = images.some(img => img.analysisResult);
   const allCompleted = images.length === TOTAL_IMAGES && images.every(img => 
     img.status === 'completed' || img.status === 'failed'
@@ -525,6 +604,9 @@ export default function PhotoAnalysisComponent({ onReset }) {
                             <Text style={styles.photoCardLabel}>
                               {POSITION_LABELS[position]}
                             </Text>
+                          {image.status === 'pending' && (
+                            <Text style={styles.photoCardStatusText}>대기 중</Text>
+                          )}
                           {image.status === 'uploading' && (
                             <>
                               <ActivityIndicator size="small" color="white" style={styles.photoCardStatus} />
@@ -583,7 +665,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
           )}
 
           {/* 분석 시작 버튼 */}
-          {allUploaded && !isAnalyzing && !allCompleted && (
+          {allImagesReady && !isUploading && !isAnalyzing && !allCompleted && (
             <TouchableOpacity
               onPress={startAnalysis}
               style={styles.startAnalysisButton}
