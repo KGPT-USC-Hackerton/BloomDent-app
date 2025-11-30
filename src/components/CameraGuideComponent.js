@@ -380,7 +380,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'quality',
         flash: 'off',
-        enableShutterSound: false,
+        enableShutterSound: true,
       });
 
       const photoPath = photo.path.startsWith('file://') 
@@ -509,7 +509,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'speed',
         flash: 'off',
-        enableShutterSound: false,
+        enableShutterSound: true,
       });
 
       const photoPath = photo.path.startsWith('file://')
