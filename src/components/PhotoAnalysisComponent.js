@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, ScrollView, Modal } from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { uploadImage, pollAnalysisStatus, deleteImage, pollHistoryAnalysisStatus } from '../services/imageService';
+import { uploadImage, deleteImage, pollAnalysisStatus, pollHistoryAnalysisStatus } from '../services/imageService';
 import { getUser } from '../utils/storage';
 import CameraGuideComponent from './CameraGuideComponent';
 
@@ -145,7 +145,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
   }, [images]);
 
   /**
-   * 이미지 업로드 및 분석 시작
+   * 이미지 업로드 (분석은 하지 않음)
    */
   const startAnalysis = useCallback(async () => {
     // 이미지 개수 확인 (3개가 아니면 경고)
@@ -160,32 +160,10 @@ export default function PhotoAnalysisComponent({ onReset }) {
     // 업로드 대기 중인 이미지만 필터링
     const pendingImages = images.filter(img => img.status === 'pending' || img.status === 'failed');
     
+    // 이미 모두 업로드된 경우
     if (pendingImages.length === 0) {
-      // 이미 업로드된 이미지가 있는 경우 (재시도)
-      const uploadedImages = images.filter(img => img.status === 'uploaded' && img.uploadedImageId);
-      if (uploadedImages.length === TOTAL_IMAGES) {
-        // history_id 확인
-        const historyIds = uploadedImages.map(img => img.historyId).filter(Boolean);
-        const uniqueHistoryIds = [...new Set(historyIds)];
-        
-        setIsAnalyzing(true);
-        setUploadProgress(50);
-        
-        if (uniqueHistoryIds.length === 1 && uniqueHistoryIds[0]) {
-          // 같은 history_id를 사용하는 경우 - 새로운 API 사용
-          try {
-            await startAnalysisWithHistoryId(uniqueHistoryIds[0], uploadedImages);
-          } catch (error) {
-            console.warn('History API 분석 실패, 개별 분석으로 fallback:', error);
-            // History API 실패 시 기존 방식으로 fallback
-            await startAnalysisForUploadedImages(uploadedImages);
-          }
-        } else {
-          // 기존 방식으로 개별 분석 (fallback)
-          await startAnalysisForUploadedImages(uploadedImages);
-        }
-        return;
-      }
+      Alert.alert('알림', '모든 이미지가 이미 업로드되었습니다.');
+      return;
     }
 
     try {
@@ -222,7 +200,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
               const uploadedCount = images.filter(i => 
                 i.status === 'uploaded' || (i.id === img.id && progress === 100)
               ).length;
-              const currentProgress = (uploadedCount / images.length) * 50; // 업로드는 0-50%
+              const currentProgress = (uploadedCount / images.length) * 100;
               setUploadProgress(currentProgress);
             }
           );
@@ -300,12 +278,11 @@ export default function PhotoAnalysisComponent({ onReset }) {
       setUploadProgress(100);
       
       if (uploadedImages.length === TOTAL_IMAGES) {
-        Alert.alert('업로드 완료', '모든 이미지 업로드가 완료되었습니다. 분석하기 버튼을 눌러주세요.');
+        Alert.alert('업로드 완료', '모든 이미지 업로드가 완료되었습니다.');
       }
     } catch (error) {
-      console.error('업로드/분석 오류:', error);
+      console.error('업로드 오류:', error);
       setIsUploading(false);
-      setIsAnalyzing(false);
       setUploadProgress(0);
       
       let errorMessage = '업로드 중 오류가 발생했습니다.';
@@ -320,7 +297,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
       
       setPickerError(errorMessage);
     }
-  }, [images, startAnalysisForUploadedImages, startAnalysisWithHistoryId]);
+  }, [images]);
 
   /**
    * History ID를 사용한 분석 시작 (3개 사진 세트)
