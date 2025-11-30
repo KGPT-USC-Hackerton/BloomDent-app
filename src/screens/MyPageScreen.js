@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { logout } from '../services/authService';
 import { getCurrentUser } from '../services/authService';
 
@@ -67,7 +68,7 @@ export default function MyPageScreen({ navigation, onLogout }) {
       <View style={styles.profileCard}>
         <View style={styles.profileContent}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
+            <Icon name="person" size={32} color="#ffffff" />
           </View>
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{user?.name || '사용자'}</Text>
@@ -75,7 +76,7 @@ export default function MyPageScreen({ navigation, onLogout }) {
             <Text style={styles.profileMembership}>일반 회원</Text>
           </View>
           <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-            <Text style={styles.editButtonText}>✏️</Text>
+            <Icon name="edit" size={20} color="#9ca3af" />
           </TouchableOpacity>
         </View>
       </View>
@@ -91,11 +92,11 @@ export default function MyPageScreen({ navigation, onLogout }) {
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.blueBackground]}>
-                <Text style={styles.settingIconText}>🔔</Text>
+                <Icon name="notifications" size={16} color="#1e40af" />
               </View>
               <Text style={styles.settingText}>알림 설정</Text>
             </View>
-            <Text style={styles.arrow}>→</Text>
+            <Icon name="chevron-right" size={20} color="#9ca3af" />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -107,11 +108,11 @@ export default function MyPageScreen({ navigation, onLogout }) {
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.greenBackground]}>
-                <Text style={styles.settingIconText}>🛡️</Text>
+                <Icon name="security" size={16} color="#16a34a" />
               </View>
               <Text style={styles.settingText}>개인정보 보호</Text>
             </View>
-            <Text style={styles.arrow}>→</Text>
+            <Icon name="chevron-right" size={20} color="#9ca3af" />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -123,11 +124,11 @@ export default function MyPageScreen({ navigation, onLogout }) {
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.purpleBackground]}>
-                <Text style={styles.settingIconText}>⚙️</Text>
+                <Icon name="settings" size={16} color="#7c3aed" />
               </View>
               <Text style={styles.settingText}>앱 설정</Text>
             </View>
-            <Text style={styles.arrow}>→</Text>
+            <Icon name="chevron-right" size={20} color="#9ca3af" />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -139,11 +140,11 @@ export default function MyPageScreen({ navigation, onLogout }) {
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, styles.yellowBackground]}>
-                <Text style={styles.settingIconText}>❓</Text>
+                <Icon name="help-outline" size={16} color="#d97706" />
               </View>
               <Text style={styles.settingText}>도움말</Text>
             </View>
-            <Text style={styles.arrow}>→</Text>
+            <Icon name="chevron-right" size={20} color="#9ca3af" />
           </TouchableOpacity>
         </View>
       </View>
@@ -180,7 +181,7 @@ export default function MyPageScreen({ navigation, onLogout }) {
             onPress={() => navigation?.navigate('TermsOfService')}
           >
             <Text style={styles.appInfoLabel}>서비스 약관</Text>
-            <Text style={styles.arrow}>→</Text>
+            <Icon name="chevron-right" size={20} color="#9ca3af" />
           </TouchableOpacity>
           <View style={styles.divider} />
           <TouchableOpacity
@@ -188,7 +189,7 @@ export default function MyPageScreen({ navigation, onLogout }) {
             onPress={() => navigation?.navigate('PrivacyPolicy')}
           >
             <Text style={styles.appInfoLabel}>개인정보처리방침</Text>
-            <Text style={styles.arrow}>→</Text>
+            <Icon name="chevron-right" size={20} color="#9ca3af" />
           </TouchableOpacity>
         </View>
       </View>
@@ -196,7 +197,8 @@ export default function MyPageScreen({ navigation, onLogout }) {
       {/* 로그아웃 */}
       <View style={styles.section}>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>🚪 로그아웃</Text>
+          <Icon name="logout" size={18} color="#dc2626" style={styles.logoutIcon} />
+          <Text style={styles.logoutButtonText}>로그아웃</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -229,10 +231,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 32,
-    color: 'white',
-  },
   profileInfo: {
     flex: 1,
   },
@@ -253,10 +251,6 @@ const styles = StyleSheet.create({
   },
   editButton: {
     padding: 8,
-  },
-  editButtonText: {
-    fontSize: 20,
-    color: '#9ca3af',
   },
   section: {
     marginHorizontal: 16,
@@ -304,16 +298,9 @@ const styles = StyleSheet.create({
   yellowBackground: {
     backgroundColor: '#fef3c7',
   },
-  settingIconText: {
-    fontSize: 16,
-  },
   settingText: {
     color: '#374151',
     fontSize: 16,
-  },
-  arrow: {
-    color: '#9ca3af',
-    fontSize: 20,
   },
   divider: {
     height: 1,
@@ -389,7 +376,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     padding: 12,
     borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoutIcon: {
+    marginRight: 8,
   },
   logoutButtonText: {
     color: '#dc2626',

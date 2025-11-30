@@ -7,7 +7,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 const PRODUCTS = [
   {
     id: 'floss',
-    title: '🧵 치실',
+    title: '치실',
+    icon: 'fiber-manual-record',
     // img 없음 (이미지 없이 카드/단계 모두 정상 표시)
     desc: '치아 사이 플라그 제거에 필수.',
     steps: [
@@ -43,7 +44,8 @@ const PRODUCTS = [
   },
   {
     id: 'interdental',
-    title: '🪥 치간칫솔',
+    title: '치간칫솔',
+    icon: 'cleaning-services',
     img: 'https://images.unsplash.com/photo-1600423115367-5c7b3d5d7d3c?q=80&w=1080&auto=format&fit=crop',
     desc: '칫솔이 닿지 않는 넓은 치간에 유용.',
     steps: [
@@ -79,7 +81,8 @@ const PRODUCTS = [
   },
   {
     id: 'mouthwash',
-    title: '🧴 가글(구강양치용액)',
+    title: '가글(구강양치용액)',
+    icon: 'local-drink',
     img: 'https://images.unsplash.com/photo-1623855244082-8b4d5b38f3a1?q=80&w=1080&auto=format&fit=crop',
     desc: '세균 억제·구취 완화에 도움.',
     steps: [
@@ -107,7 +110,8 @@ const PRODUCTS = [
   },
   {
     id: 'electric-irrigator',
-    title: '⚡ 전동칫솔 / 워터픽',
+    title: '전동칫솔 / 워터픽',
+    icon: 'battery-charging-full',
     img: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?q=80&w=1080&auto=format&fit=crop',
     desc: '일관된 진동/분사로 플라그 제거 보조. 교정 중에도 유용.',
     steps: [
@@ -136,7 +140,8 @@ const PRODUCTS = [
   },
   {
     id: 'tongue',
-    title: '🪒 혀 클리너',
+    title: '혀 클리너',
+    icon: 'content-cut',
     img: 'https://images.unsplash.com/photo-1609840170477-7b9f7b7f6f6a?q=80&w=1080&auto=format&fit=crop',
     desc: '혀 표면 설태 제거로 구취 완화.',
     steps: [
@@ -171,13 +176,16 @@ function Card({ children, style }) {
 }
 
 // 3) 디테일 헤더 (뒤로가기)
-function DetailHeader({ title, onBack }) {
+function DetailHeader({ title, icon, onBack }) {
   return (
     <View style={styles.detailHeader}>
       <Pressable onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="뒤로가기">
         <Icon name="arrow-back" size={20} color="#0F172A" />
       </Pressable>
-      <Text style={styles.detailTitle}>{title}</Text>
+      <View style={styles.detailTitleContainer}>
+        {icon && <Icon name={icon} size={20} color="#0F172A" style={styles.detailTitleIcon} />}
+        <Text style={styles.detailTitle}>{title}</Text>
+      </View>
       <View style={{ width: 24 }} />
     </View>
   );
@@ -203,7 +211,10 @@ export default function HygieneProductsScreen() {
           >
             <Card>
               {/* 첫 페이지(목록)에서는 이미지 표시하지 않음 */}
-              <Text style={styles.title}>{item.title}</Text>
+              <View style={styles.titleRow}>
+                <Icon name={item.icon} size={20} color="#1E3A8A" style={styles.titleIcon} />
+                <Text style={styles.title}>{item.title}</Text>
+              </View>
               <Text style={styles.desc}>{item.desc}</Text>
 
               {item.tip && (
@@ -227,13 +238,21 @@ export default function HygieneProductsScreen() {
   // 상세(단계) 화면
   return (
     <View style={{ flex: 1, backgroundColor: '#EFF6FF' }}>
-      <DetailHeader title={selectedProduct.title} onBack={() => setSelected(null)} />
+      <DetailHeader title={selectedProduct.title} icon={selectedProduct.icon} onBack={() => setSelected(null)} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
-        {selectedProduct.steps.map(s => (
-          <Card key={s.id} style={{ marginBottom: 14 }}>
-            {!!s.img && <Image source={{ uri: s.img }} style={styles.img} />}
-            <Text style={styles.title}>{s.title}</Text>
-            <Text style={styles.desc}>{s.desc}</Text>
+        {selectedProduct.steps.map(s => {
+          const stepNumber = parseInt(s.id);
+          const titleWithoutEmoji = s.title.replace(/^[0-9]️⃣\s*/, '');
+          return (
+            <Card key={s.id} style={{ marginBottom: 14 }}>
+              {!!s.img && <Image source={{ uri: s.img }} style={styles.img} />}
+              <View style={styles.titleRow}>
+                <View style={styles.stepBadge}>
+                  <Text style={styles.stepNumber}>{stepNumber}</Text>
+                </View>
+                <Text style={styles.title}>{titleWithoutEmoji}</Text>
+              </View>
+              <Text style={styles.desc}>{s.desc}</Text>
             {s.tip && (
               <View style={styles.tipBox}>
                 <Icon name="info" size={16} color="#1E40AF" />
@@ -241,7 +260,8 @@ export default function HygieneProductsScreen() {
               </View>
             )}
           </Card>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -261,7 +281,19 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
   },
   img: { width: '100%', height: 180, borderRadius: 12, marginBottom: 10 },
-  title: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 6 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  titleIcon: { marginRight: 8 },
+  stepBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  stepNumber: { fontSize: 14, fontWeight: '700', color: '#ffffff' },
+  title: { fontSize: 18, fontWeight: '700', color: '#111827', flex: 1 },
   desc: { color: '#374151', fontSize: 14, lineHeight: 22 },
 
   tipBox: {
@@ -305,5 +337,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  detailTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: '#0F172A' },
+  detailTitleContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  detailTitleIcon: { marginRight: 8 },
+  detailTitle: { fontSize: 16, fontWeight: '700', color: '#0F172A' },
 });
