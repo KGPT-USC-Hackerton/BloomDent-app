@@ -22,7 +22,9 @@ target 'BloomDent' do
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
+  pod 'TensorFlowLiteSwift'
 
+  
   post_install do |installer|
     react_native_post_install(
       installer,
