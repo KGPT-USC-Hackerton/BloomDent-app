@@ -5,6 +5,12 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# iOS 최소 버전(React Native 템플릿에서 쓰는 헬퍼)
+def min_ios_version_supported
+  '15.1'
+end
+
+# ✅ RN 템플릿 스타일대로 helper 사용
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
@@ -24,7 +30,14 @@ target 'BloomDent' do
   )
   pod 'TensorFlowLiteSwift'
 
+<<<<<<< HEAD
+  # ✅ TFLite Swift 인터프리터 사용
+  #  (예전에 TensorFlowLiteC 썼다면 그 줄은 삭제!)
+  pod 'TensorFlowLiteSwift'
+
+=======
   
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
   post_install do |installer|
     react_native_post_install(
       installer,

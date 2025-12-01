@@ -1,9 +1,32 @@
+// src/components/PhotoAnalysisComponent.js
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { Alert, Image, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, ScrollView, Modal } from 'react-native';
+import {
+  Alert,
+  Image,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
+  ScrollView,
+  Modal,
+} from 'react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
+<<<<<<< HEAD
+import uuid from 'react-native-uuid';
+import RNFS from 'react-native-fs';
+
+import {
+  uploadImage,
+  pollAnalysisStatus,
+  deleteImage,
+} from '../services/imageService';
+=======
 import { uploadImage, deleteImage, pollAnalysisStatus, pollHistoryAnalysisStatus } from '../services/imageService';
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 import { getUser } from '../utils/storage';
 import CameraGuideComponent from './CameraGuideComponent';
+import { classifyTeethRegion } from '../services/teethClassifierService';
 
 const TOTAL_IMAGES = 3;
 const POSITION_LABELS = {
@@ -24,8 +47,10 @@ export default function PhotoAnalysisComponent({ onReset }) {
   const [currentCameraPosition, setCurrentCameraPosition] = useState(null);
   const [isPhotoSessionStarted, setIsPhotoSessionStarted] = useState(false);
   const [lastCapturedImageId, setLastCapturedImageId] = useState(null); // 마지막으로 촬영한 이미지의 uploadedImageId
+  const [historyId, setHistoryId] = useState(null); // 🔹 동일 세션 묶음용 history_id
+
   const imagesRef = useRef([]); // 최신 images 상태 추적용
-  
+
   // images 상태가 변경될 때마다 ref 업데이트
   useEffect(() => {
     imagesRef.current = images;
@@ -38,13 +63,15 @@ export default function PhotoAnalysisComponent({ onReset }) {
     setUploadProgress(0);
     setPickerError(null);
     setIsPhotoSessionStarted(false);
+    setLastCapturedImageId(null);
+    setHistoryId(null); // 🔹 세션 초기화
     onReset?.();
   }, [onReset]);
 
   /**
    * 분석 결과를 UI 형식으로 변환
    */
-  const formatAnalysisResult = useCallback((analysisData) => {
+  const formatAnalysisResult = useCallback(analysisData => {
     const analysis = analysisData.analysis;
     if (!analysis) return null;
 
@@ -55,7 +82,9 @@ export default function PhotoAnalysisComponent({ onReset }) {
     if (analysis.occlusion?.status) {
       issues.push({
         type: analysis.occlusion.status === '정상' ? 'good' : 'warning',
-        text: `교합 상태: ${analysis.occlusion.status}${analysis.occlusion.comment ? ` - ${analysis.occlusion.comment}` : ''}`,
+        text: `교합 상태: ${analysis.occlusion.status}${
+          analysis.occlusion.comment ? ` - ${analysis.occlusion.comment}` : ''
+        }`,
       });
     }
 
@@ -63,7 +92,11 @@ export default function PhotoAnalysisComponent({ onReset }) {
     if (analysis.cavity?.detected) {
       issues.push({
         type: 'warning',
-        text: `충치 감지됨${analysis.cavity.locations?.length > 0 ? ` (위치: ${analysis.cavity.locations.join(', ')})` : ''}${analysis.cavity.comment ? ` - ${analysis.cavity.comment}` : ''}`,
+        text: `충치 감지됨${
+          analysis.cavity.locations?.length > 0
+            ? ` (위치: ${analysis.cavity.locations.join(', ')})`
+            : ''
+        }${analysis.cavity.comment ? ` - ${analysis.cavity.comment}` : ''}`,
       });
     } else if (analysis.cavity?.detected === false) {
       issues.push({
@@ -87,7 +120,9 @@ export default function PhotoAnalysisComponent({ onReset }) {
     }
 
     return {
-      score: analysis.overall_score ? Math.round(analysis.overall_score * 10) : null,
+      score: analysis.overall_score
+        ? Math.round(analysis.overall_score * 10)
+        : null,
       issues,
       recommendations,
       rawAnalysis: analysis,
@@ -95,6 +130,93 @@ export default function PhotoAnalysisComponent({ onReset }) {
   }, []);
 
   /**
+<<<<<<< HEAD
+   * 이미지 추가 및 즉시 업로드
+   *  - 이 시점에는 이미 tflite 위치 검증이 끝났다고 가정 (position 검증 통과)
+   */
+  const addImage = useCallback(
+    async (asset, position) => {
+      const imageId = Date.now();
+
+      // 이미지 추가 (업로드 중 상태)
+      setImages(prev => {
+        const newImages = [...prev];
+        newImages.push({
+          id: imageId,
+          asset,
+          position,
+          uploadedImageId: null,
+          analysisResult: null,
+          status: 'uploading', // 'uploading' | 'uploaded' | 'analyzing' | 'completed' | 'failed'
+          error: null,
+        });
+        return newImages;
+      });
+      setPickerError(null);
+
+      // 즉시 업로드 시작
+      try {
+        const user = await getUser();
+        const userId = user?.id || null;
+
+        setImages(prev =>
+          prev.map(i => (i.id === imageId ? { ...i, status: 'uploading' } : i)),
+        );
+
+        const uploadResponse = await uploadImage(
+          asset,
+          {
+            user_id: userId,
+            image_type: 'oral_care',
+            position: position, // 이미 AI 검증을 통과한 값
+            history_id: historyId || null, // 🔹 동일 세션 묶음
+          },
+          progress => {
+            // 개별 이미지 업로드 진행률 (선택사항)
+            console.log(`이미지 ${imageId} 업로드 진행률: ${progress}%`);
+          },
+        );
+
+        if (!uploadResponse.success || !uploadResponse.data?.image_id) {
+          throw new Error(
+            uploadResponse.message || '이미지 업로드에 실패했습니다.',
+          );
+        }
+
+        const uploadedImageId = uploadResponse.data.image_id;
+
+        // 업로드 완료 상태로 변경
+        setImages(prev =>
+          prev.map(i =>
+            i.id === imageId
+              ? { ...i, uploadedImageId, status: 'uploaded' }
+              : i,
+          ),
+        );
+      } catch (error) {
+        console.error('이미지 업로드 오류:', error);
+
+        let errorMessage = '이미지 업로드 중 오류가 발생했습니다.';
+        if (error.status === 0) {
+          errorMessage = '네트워크 연결을 확인해주세요.';
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+
+        setImages(prev =>
+          prev.map(i =>
+            i.id === imageId
+              ? { ...i, status: 'failed', error: errorMessage }
+              : i,
+          ),
+        );
+
+        setPickerError(errorMessage);
+      }
+    },
+    [historyId],
+  );
+=======
    * 이미지 추가 (로컬에만 저장, 업로드는 나중에)
    */
   const addImage = useCallback(async (asset, position) => {
@@ -117,33 +239,56 @@ export default function PhotoAnalysisComponent({ onReset }) {
     });
     setPickerError(null);
   }, []);
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 
   /**
    * 이미지 삭제 (로컬 상태, Cloudinary, DB 모두에서 삭제)
    */
-  const removeImage = useCallback(async (imageId) => {
-    // 현재 이미지 정보 찾기
-    const imageToRemove = images.find(img => img.id === imageId);
-    
-    if (!imageToRemove) {
-      return;
-    }
+  const removeImage = useCallback(
+    async imageId => {
+      // 현재 이미지 정보 찾기
+      const imageToRemove = images.find(img => img.id === imageId);
 
-    // 업로드 완료된 이미지인 경우 Cloudinary와 DB에서도 삭제
-    if (imageToRemove.uploadedImageId) {
-      try {
-        await deleteImage(imageToRemove.uploadedImageId);
-        console.log('✅ 이미지 삭제 완료 (Cloudinary & DB):', imageToRemove.uploadedImageId);
-      } catch (error) {
-        console.error('❌ 이미지 삭제 오류:', error);
-        // 삭제 실패해도 로컬 상태에서는 제거 (사용자 경험을 위해)
+      if (!imageToRemove) {
+        return;
       }
-    }
 
-    // 로컬 상태에서 제거
-    setImages(prev => prev.filter(img => img.id !== imageId));
-  }, [images]);
+      // 업로드 완료된 이미지인 경우 Cloudinary와 DB에서도 삭제
+      if (imageToRemove.uploadedImageId) {
+        try {
+          await deleteImage(imageToRemove.uploadedImageId);
+          console.log(
+            '✅ 이미지 삭제 완료 (Cloudinary & DB):',
+            imageToRemove.uploadedImageId,
+          );
+        } catch (error) {
+          console.error('❌ 이미지 삭제 오류:', error);
+          // 삭제 실패해도 로컬 상태에서는 제거 (사용자 경험을 위해)
+        }
+      }
 
+<<<<<<< HEAD
+      // 로컬 상태에서 제거
+      setImages(prev => prev.filter(img => img.id !== imageId));
+    },
+    [images],
+  );
+
+  /**
+   * 업로드된 이미지들에 대해 Flask + Gemini 분석 시작
+   */
+  const startAnalysis = useCallback(async () => {
+    // 업로드 완료된 이미지만 필터링
+    const uploadedImages = images.filter(
+      img => img.status === 'uploaded' && img.uploadedImageId,
+    );
+
+    if (uploadedImages.length === 0) {
+      Alert.alert(
+        '알림',
+        '분석할 이미지가 없습니다. 모든 이미지가 업로드 완료되었는지 확인해주세요.',
+      );
+=======
   /**
    * 이미지 업로드 (분석은 하지 않음)
    */
@@ -163,6 +308,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
     // 이미 모두 업로드된 경우
     if (pendingImages.length === 0) {
       Alert.alert('알림', '모든 이미지가 이미 업로드되었습니다.');
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
       return;
     }
 
@@ -403,22 +549,55 @@ export default function PhotoAnalysisComponent({ onReset }) {
   const startAnalysisForUploadedImages = useCallback(async (uploadedImages) => {
     try {
       // 모든 이미지의 분석 상태 폴링 시작
-      const pollPromises = uploadedImages.map((img) => {
+      const pollPromises = uploadedImages.map(img => {
         // 분석 중 상태로 변경
-        setImages(prev => prev.map(i => 
-          i.id === img.id ? { ...i, status: 'analyzing' } : i
-        ));
+        setImages(prev =>
+          prev.map(i => (i.id === img.id ? { ...i, status: 'analyzing' } : i)),
+        );
 
         return pollAnalysisStatus(img.uploadedImageId, {
           interval: 2500,
           maxAttempts: 60,
           onStatusChange: (status, attemptCount) => {
+<<<<<<< HEAD
+            console.log(
+              `이미지 ${img.id} 분석 상태: ${status} (시도 ${attemptCount}회)`,
+            );
+            // 진행률 업데이트 (분석 단계: 0-100%)
+            const completedCount = images.filter(
+              i => i.status === 'completed',
+            ).length;
+            const progress =
+              ((completedCount + 1) / uploadedImages.length) * 100;
+            setUploadProgress(Math.min(progress, 100));
+=======
             console.log(`이미지 ${img.id} 분석 상태: ${status} (시도 ${attemptCount}회)`);
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
           },
         })
-          .then((statusResponse) => {
+          .then(statusResponse => {
             if (statusResponse.success && statusResponse.data?.analysis) {
               const formattedResult = formatAnalysisResult(statusResponse.data);
+<<<<<<< HEAD
+              setImages(prev =>
+                prev.map(i =>
+                  i.id === img.id
+                    ? {
+                        ...i,
+                        analysisResult: formattedResult,
+                        status: 'completed',
+                      }
+                    : i,
+                ),
+              );
+
+              // 진행률 업데이트
+              const completedCount =
+                images.filter(i => i.status === 'completed').length + 1;
+              const progress = (completedCount / uploadedImages.length) * 100;
+              setUploadProgress(Math.min(progress, 100));
+
+=======
               setImages(prev => {
                 const updated = prev.map(i => 
                   i.id === img.id 
@@ -432,11 +611,28 @@ export default function PhotoAnalysisComponent({ onReset }) {
                 return updated;
               });
               
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
               return { imageId: img.id, result: formattedResult };
             } else {
-              throw new Error(statusResponse.message || '분석 결과를 가져올 수 없습니다.');
+              throw new Error(
+                statusResponse.message || '분석 결과를 가져올 수 없습니다.',
+              );
             }
           })
+<<<<<<< HEAD
+          .catch(error => {
+            setImages(prev =>
+              prev.map(i =>
+                i.id === img.id
+                  ? {
+                      ...i,
+                      status: 'failed',
+                      error: error.message || '분석 실패',
+                    }
+                  : i,
+              ),
+            );
+=======
           .catch((error) => {
             const errorMessageText = error?.message || error?.toString() || '분석 실패';
             setImages(prev => prev.map(i => 
@@ -444,12 +640,13 @@ export default function PhotoAnalysisComponent({ onReset }) {
                 ? { ...i, status: 'failed', error: errorMessageText } 
                 : i
             ));
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
             throw error;
           });
       });
 
       await Promise.allSettled(pollPromises);
-      
+
       // 전체 진행률 100%
       setUploadProgress(100);
       setIsAnalyzing(false);
@@ -457,8 +654,15 @@ export default function PhotoAnalysisComponent({ onReset }) {
       // 모든 분석이 완료되었는지 확인
       const finalImages = imagesRef.current;
       const allCompleted = uploadedImages.every(img => {
+<<<<<<< HEAD
+        const currentImg = images.find(i => i.id === img.id);
+        return (
+          currentImg?.status === 'completed' || currentImg?.status === 'failed'
+        );
+=======
         const currentImg = finalImages.find(i => i.id === img.id);
         return currentImg?.status === 'completed' || currentImg?.status === 'failed';
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
       });
 
       if (allCompleted) {
@@ -466,11 +670,13 @@ export default function PhotoAnalysisComponent({ onReset }) {
           const currentImg = finalImages.find(i => i.id === img.id);
           return currentImg?.status === 'failed';
         }).length;
-        
+
         if (failedCount > 0) {
           Alert.alert(
             '분석 완료',
-            `${uploadedImages.length - failedCount}장의 분석이 완료되었습니다. ${failedCount}장의 분석에 실패했습니다.`
+            `${
+              uploadedImages.length - failedCount
+            }장의 분석이 완료되었습니다. ${failedCount}장의 분석에 실패했습니다.`,
           );
         } else {
           Alert.alert('분석 완료', '모든 이미지의 분석이 완료되었습니다.');
@@ -480,20 +686,94 @@ export default function PhotoAnalysisComponent({ onReset }) {
       console.error('분석 오류:', error);
       setIsAnalyzing(false);
       setUploadProgress(0);
-      
+
       let errorMessage = '분석 중 오류가 발생했습니다.';
-      
+
       if (error.status === 0) {
-        errorMessage = '네트워크 연결을 확인해주세요. 백엔드 서버가 실행 중인지 확인해주세요.';
+        errorMessage =
+          '네트워크 연결을 확인해주세요. 백엔드 서버가 실행 중인지 확인해주세요.';
       } else if (error.message) {
         errorMessage = error.message;
       } else if (error.status === 500) {
-        errorMessage = '서버 오류가 발생했습니다. 백엔드 서버 로그를 확인해주세요.';
+        errorMessage =
+          '서버 오류가 발생했습니다. 백엔드 서버 로그를 확인해주세요.';
       }
-      
+
       setPickerError(errorMessage);
     }
   }, [formatAnalysisResult]);
+
+  /**
+   * 앨범/카메라에서 선택된 asset 에 대해
+   * 1) base64 기반 tflite 분류
+   * 2) 유저 선택 position 과 비교
+   * 3) 일치하면 addImage 호출
+   */
+  const runPositionCheckAndAdd = useCallback(
+    async (asset, position) => {
+      let workingAsset = asset;
+
+      // ---- 1) base64 준비 (가능하면) ----
+      try {
+        if (!workingAsset?.base64 && workingAsset?.uri) {
+          const path = workingAsset.uri.replace('file://', '');
+          const base64 = await RNFS.readFile(path, 'base64');
+          workingAsset = { ...workingAsset, base64 };
+          console.log(
+            '[PhotoAnalysis] base64 생성 완료, length:',
+            base64.length,
+          );
+        }
+      } catch (fsErr) {
+        console.warn('base64 생성 실패 (사진은 그대로 사용):', fsErr);
+      }
+
+      // ---- 2) AI 위치 분류 (되면 하고, 안 되면 스킵) ----
+      if (workingAsset?.base64) {
+        try {
+          const { top1 } = await classifyTeethRegion(workingAsset.base64);
+          console.log(
+            '[Teeth AI] 예측 포지션:',
+            top1.label,
+            'score:',
+            top1.score,
+            '사용자 선택:',
+            position,
+          );
+
+          if (top1.label !== position) {
+            // ⚠️ 이제는 "다시 촬영" 요구 없이, 그냥 로그만 남김
+            console.log(
+              '[Teeth AI] 사용자 선택 위치와 AI 예측 위치가 다릅니다. ' +
+                `(user=${position}, ai=${top1.label})`,
+            );
+            // 필요하면 나중에 여기서 Toast 정도만 띄울 수 있음
+          }
+        } catch (aiErr) {
+          console.warn(
+            '[Teeth AI] 위치 분석 실패 (사진은 그대로 사용):',
+            aiErr,
+          );
+        }
+      } else {
+        console.warn(
+          '[PhotoAnalysis] base64 없음 - AI 위치 분석은 건너뛰고 사진만 업로드합니다.',
+        );
+      }
+
+      // ---- 3) AI 결과와 상관없이 항상 업로드 진행 ----
+      try {
+        await addImage(workingAsset, position);
+      } catch (uploadErr) {
+        console.error('이미지 업로드 오류:', uploadErr);
+        Alert.alert(
+          '오류',
+          '이미지를 업로드하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        );
+      }
+    },
+    [addImage],
+  );
 
   const handlePickerResult = useCallback(
     async (response, position) => {
@@ -503,7 +783,8 @@ export default function PhotoAnalysisComponent({ onReset }) {
 
       if (response.errorCode) {
         setPickerError(
-          response.errorMessage || '사진을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.'
+          response.errorMessage ||
+            '사진을 불러오는 중 문제가 발생했습니다. 다시 시도해주세요.',
         );
         return;
       }
@@ -515,9 +796,9 @@ export default function PhotoAnalysisComponent({ onReset }) {
         return;
       }
 
-      addImage(asset, position);
+      await runPositionCheckAndAdd(asset, position);
     },
-    [addImage]
+    [runPositionCheckAndAdd],
   );
 
   const handleLaunch = useCallback(
@@ -531,36 +812,93 @@ export default function PhotoAnalysisComponent({ onReset }) {
         const options = {
           mediaType: 'photo',
           quality: 0.8,
+          includeBase64: true, // 🔹 tflite용 base64 필요
         };
 
         try {
           const response = await launchImageLibrary(options);
           handlePickerResult(response, position);
         } catch (error) {
-          setPickerError('사진을 불러오는 중 오류가 발생했습니다. 다시 시도해주세요.');
+          console.error('launchImageLibrary error:', error);
+          setPickerError(
+            '사진을 불러오는 중 오류가 발생했습니다. 다시 시도해주세요.',
+          );
         }
       }
     },
-    [handlePickerResult]
+    [handlePickerResult],
   );
 
   const handleCameraCapture = useCallback(
-    async (asset) => {
+    async asset => {
       setCameraModalVisible(false);
       if (asset && currentCameraPosition) {
         const imageId = Date.now();
-        // 이미지 추가 전에 ID 저장
         setLastCapturedImageId(imageId);
-        await addImage(asset, currentCameraPosition);
+        await runPositionCheckAndAdd(asset, currentCameraPosition);
       }
       setCurrentCameraPosition(null);
     },
-    [addImage, currentCameraPosition]
+    [currentCameraPosition, runPositionCheckAndAdd],
   );
 
   const handleCameraClose = useCallback(async () => {
     // 마지막으로 촬영한 이미지가 있으면 삭제 (업로드 전이므로 로컬에서만 제거)
     if (lastCapturedImageId) {
+<<<<<<< HEAD
+      // 업로드 완료를 기다리기 (최대 5초)
+      let attempts = 0;
+      const maxAttempts = 20; // 0.25초 간격으로 20회 = 5초
+
+      const checkAndDelete = async () => {
+        const lastImage = imagesRef.current.find(
+          img => img.id === lastCapturedImageId,
+        );
+
+        if (lastImage && lastImage.uploadedImageId) {
+          // 업로드 완료 - 삭제
+          try {
+            await deleteImage(lastImage.uploadedImageId);
+            console.log(
+              '✅ 이미지 삭제 완료 (Cloudinary & DB):',
+              lastImage.uploadedImageId,
+            );
+            // 로컬 상태에서도 제거
+            setImages(prev =>
+              prev.filter(img => img.id !== lastCapturedImageId),
+            );
+          } catch (error) {
+            console.error('❌ 이미지 삭제 오류:', error);
+            // 삭제 실패해도 로컬 상태에서 제거
+            setImages(prev =>
+              prev.filter(img => img.id !== lastCapturedImageId),
+            );
+          }
+          setLastCapturedImageId(null);
+          return true;
+        } else if (lastImage && lastImage.status === 'failed') {
+          // 업로드 실패 - 로컬 상태에서만 제거
+          setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+          setLastCapturedImageId(null);
+          return true;
+        } else if (attempts < maxAttempts) {
+          // 아직 업로드 중 - 다시 확인
+          attempts++;
+          setTimeout(checkAndDelete, 250);
+          return false;
+        } else {
+          // 타임아웃 - 로컬 상태에서만 제거
+          console.warn(
+            '⚠️ 이미지 업로드 완료 대기 시간 초과 - 로컬에서만 제거',
+          );
+          setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
+          setLastCapturedImageId(null);
+          return true;
+        }
+      };
+
+      await checkAndDelete();
+=======
       const lastImage = imagesRef.current.find(img => img.id === lastCapturedImageId);
       
       // 업로드 완료된 이미지인 경우에만 서버에서 삭제
@@ -576,12 +914,31 @@ export default function PhotoAnalysisComponent({ onReset }) {
       // 로컬 상태에서 제거
       setImages(prev => prev.filter(img => img.id !== lastCapturedImageId));
       setLastCapturedImageId(null);
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
     }
-    
+
     setCameraModalVisible(false);
     setCurrentCameraPosition(null);
   }, [lastCapturedImageId]);
 
+<<<<<<< HEAD
+  const handleAddPhoto = useCallback(
+    position => {
+      if (images.length >= TOTAL_IMAGES) {
+        Alert.alert(
+          '알림',
+          `최대 ${TOTAL_IMAGES}장의 사진만 촬영할 수 있습니다.`,
+        );
+        return;
+      }
+
+      // 이미 해당 위치의 사진이 있는지 확인
+      const existingImage = images.find(img => img.position === position);
+      if (existingImage) {
+        Alert.alert('알림', '이미 해당 위치의 사진이 있습니다.');
+        return;
+      }
+=======
   const handleAddPhoto = useCallback((position) => {
     // 이미 해당 위치의 사진이 있는지 확인
     const existingImage = images.find(img => img.position === position);
@@ -613,35 +970,63 @@ export default function PhotoAnalysisComponent({ onReset }) {
       );
       return;
     }
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 
-    Alert.alert(
-      '사진 선택',
-      `${POSITION_LABELS[position]} 사진을 촬영하거나 앨범에서 선택해주세요.`,
-      [
-        { text: '카메라로 촬영', onPress: () => handleLaunch('camera', position) },
-        { text: '앨범에서 선택', onPress: () => handleLaunch('library', position) },
-        { text: '취소', style: 'cancel' },
-      ],
-      { cancelable: true }
+      Alert.alert(
+        '사진 선택',
+        `${POSITION_LABELS[position]} 사진을 촬영하거나 앨범에서 선택해주세요.`,
+        [
+          {
+            text: '카메라로 촬영',
+            onPress: () => handleLaunch('camera', position),
+          },
+          {
+            text: '앨범에서 선택',
+            onPress: () => handleLaunch('library', position),
+          },
+          { text: '취소', style: 'cancel' },
+        ],
+        { cancelable: true },
+      );
+    },
+    [images, handleLaunch],
+  );
+
+  const allUploaded =
+    images.length === TOTAL_IMAGES &&
+    images.every(
+      img =>
+        img.status === 'uploaded' ||
+        img.status === 'analyzing' ||
+        img.status === 'completed' ||
+        img.status === 'failed',
     );
+<<<<<<< HEAD
+=======
   }, [images, handleLaunch, removeImage]);
 
 
   const allImagesReady = images.length === TOTAL_IMAGES;
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
   const hasResults = images.some(img => img.analysisResult);
-  const allCompleted = images.length === TOTAL_IMAGES && images.every(img => 
-    img.status === 'completed' || img.status === 'failed'
-  );
+  const allCompleted =
+    images.length === TOTAL_IMAGES &&
+    images.every(img => img.status === 'completed' || img.status === 'failed');
 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+        >
           {/* 진행 상황 표시 */}
           {isAnalyzing && (
             <View style={styles.progressSection}>
               <View style={styles.progressBarContainer}>
-                <View style={[styles.progressBar, { width: `${uploadProgress}%` }]} />
+                <View
+                  style={[styles.progressBar, { width: `${uploadProgress}%` }]}
+                />
               </View>
               <Text style={styles.progressText}>
                 AI 분석 중... {uploadProgress.toFixed(0)}%
@@ -658,7 +1043,10 @@ export default function PhotoAnalysisComponent({ onReset }) {
                   윗니, 아랫니, 앞니 사진을 촬영하여{'\n'}AI 분석을 받아보세요
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setIsPhotoSessionStarted(true)}
+                  onPress={() => {
+                    setHistoryId(uuid.v4()); // 🔹 세션용 history_id 생성
+                    setIsPhotoSessionStarted(true);
+                  }}
                   style={styles.startButton}
                 >
                   <Text style={styles.startButtonText}>촬영 시작하기</Text>
@@ -673,7 +1061,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
               <View style={styles.sectionHeader}>
                 {images.length === 0 && (
                   <TouchableOpacity
-                    onPress={() => setIsPhotoSessionStarted(false)}
+                    onPress={resetState}
                     style={styles.backButton}
                   >
                     <Text style={styles.backButtonText}>← 뒤로</Text>
@@ -682,28 +1070,70 @@ export default function PhotoAnalysisComponent({ onReset }) {
                 <View style={styles.sectionTitleContainer}>
                   <Text style={styles.sectionTitle}>구강 사진 촬영</Text>
                   <Text style={styles.sectionSubtitle}>
-                    각 위치별로 사진을 촬영해주세요 ({images.length}/{TOTAL_IMAGES})
+                    각 위치별로 사진을 촬영해주세요 ({images.length}/
+                    {TOTAL_IMAGES})
                   </Text>
                 </View>
               </View>
-              
+
               <View style={styles.positionButtons}>
-                {['upper', 'lower', 'front'].map((position) => {
+                {['upper', 'lower', 'front'].map(position => {
                   const image = images.find(img => img.position === position);
                   const isTaken = !!image;
-                  
+
                   return (
                     <View key={position} style={styles.positionButtonContainer}>
                       {isTaken ? (
                         <View style={styles.photoCard}>
-                          <Image 
-                            source={{ uri: image.asset.uri }} 
-                            style={styles.photoCardImage} 
+                          <Image
+                            source={{ uri: image.asset.uri }}
+                            style={styles.photoCardImage}
                           />
                           <View style={styles.photoCardOverlay}>
                             <Text style={styles.photoCardLabel}>
                               {POSITION_LABELS[position]}
                             </Text>
+<<<<<<< HEAD
+                            {image.status === 'uploading' && (
+                              <>
+                                <ActivityIndicator
+                                  size="small"
+                                  color="white"
+                                  style={styles.photoCardStatus}
+                                />
+                                <Text style={styles.photoCardStatusText}>
+                                  업로드 중...
+                                </Text>
+                              </>
+                            )}
+                            {image.status === 'uploaded' && (
+                              <Text style={styles.photoCardCheck}>
+                                ✓ 업로드 완료
+                              </Text>
+                            )}
+                            {image.status === 'analyzing' && (
+                              <>
+                                <ActivityIndicator
+                                  size="small"
+                                  color="#3b82f6"
+                                  style={styles.photoCardStatus}
+                                />
+                                <Text style={styles.photoCardStatusText}>
+                                  분석 중...
+                                </Text>
+                              </>
+                            )}
+                            {image.status === 'completed' && (
+                              <Text style={styles.photoCardCheck}>
+                                ✓ 분석 완료
+                              </Text>
+                            )}
+                            {image.status === 'failed' && (
+                              <Text style={styles.photoCardError}>
+                                ✕ {image.error || '실패'}
+                              </Text>
+                            )}
+=======
                           {image.status === 'pending' && (
                             <Text style={styles.photoCardStatusText}>대기 중</Text>
                           )}
@@ -728,6 +1158,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
                           {image.status === 'failed' && (
                             <Text style={styles.photoCardError}>✕ {image.error || '실패'}</Text>
                           )}
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
                           </View>
                           <TouchableOpacity
                             onPress={() => removeImage(image.id)}
@@ -742,12 +1173,15 @@ export default function PhotoAnalysisComponent({ onReset }) {
                           onPress={() => handleAddPhoto(position)}
                           style={[
                             styles.positionButton,
-                            (isUploading || isAnalyzing) && styles.positionButtonDisabled
+                            (isUploading || isAnalyzing) &&
+                              styles.positionButtonDisabled,
                           ]}
                           disabled={isUploading || isAnalyzing}
                         >
                           <View style={styles.positionButtonIcon}>
-                            <Text style={styles.positionButtonIconText}>📷</Text>
+                            <Text style={styles.positionButtonIconText}>
+                              📷
+                            </Text>
                           </View>
                           <Text style={styles.positionButtonText}>
                             {POSITION_LABELS[position]}
@@ -770,9 +1204,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
               onPress={startAnalysis}
               style={styles.startAnalysisButton}
             >
-              <Text style={styles.startAnalysisButtonText}>
-                🔍 분석하기
-              </Text>
+              <Text style={styles.startAnalysisButtonText}>🔍 분석하기</Text>
             </TouchableOpacity>
           )}
 
@@ -780,9 +1212,7 @@ export default function PhotoAnalysisComponent({ onReset }) {
           {isAnalyzing && (
             <View style={styles.loadingSection}>
               <ActivityIndicator size="large" color="#3b82f6" />
-              <Text style={styles.loadingText}>
-                AI 분석 중...
-              </Text>
+              <Text style={styles.loadingText}>AI 분석 중...</Text>
               <Text style={styles.loadingSubtext}>
                 {uploadProgress.toFixed(0)}% 완료
               </Text>
@@ -834,21 +1264,27 @@ export default function PhotoAnalysisComponent({ onReset }) {
               {/* 개별 결과 */}
               {images.map((img, index) => {
                 if (!img.analysisResult) return null;
-                
+
                 const result = img.analysisResult;
                 return (
                   <View key={img.id} style={styles.resultCard}>
                     <View style={styles.resultHeader}>
-                      <Image 
-                        source={{ uri: img.asset.uri }} 
-                        style={styles.resultThumbnail} 
+                      <Image
+                        source={{ uri: img.asset.uri }}
+                        style={styles.resultThumbnail}
                       />
                       <View style={styles.resultHeaderText}>
                         <Text style={styles.resultPosition}>
+<<<<<<< HEAD
+                          {index + 1}번째 사진 -{' '}
+=======
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
                           {POSITION_LABELS[img.position] || '선택 안함'}
                         </Text>
                         {result.score !== null && (
-                          <Text style={styles.resultScore}>점수: {result.score}</Text>
+                          <Text style={styles.resultScore}>
+                            점수: {result.score}
+                          </Text>
                         )}
                       </View>
                     </View>
@@ -858,7 +1294,11 @@ export default function PhotoAnalysisComponent({ onReset }) {
                         {result.issues.map((issue, issueIndex) => (
                           <View key={issueIndex} style={styles.issueItem}>
                             <Text style={styles.issueIcon}>
-                              {issue.type === 'good' ? '✅' : issue.type === 'warning' ? '⚠️' : 'ℹ️'}
+                              {issue.type === 'good'
+                                ? '✅'
+                                : issue.type === 'warning'
+                                ? '⚠️'
+                                : 'ℹ️'}
                             </Text>
                             <Text style={styles.issueText}>{issue.text}</Text>
                           </View>
@@ -866,17 +1306,25 @@ export default function PhotoAnalysisComponent({ onReset }) {
                       </View>
                     )}
 
-                    {result.recommendations && result.recommendations.length > 0 && (
-                      <View style={styles.recommendationsSection}>
-                        <Text style={styles.recommendationsTitle}>추천 사항</Text>
-                        {result.recommendations.map((rec, recIndex) => (
-                          <View key={recIndex} style={styles.recommendationItem}>
-                            <Text style={styles.bullet}>•</Text>
-                            <Text style={styles.recommendationText}>{rec}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
+                    {result.recommendations &&
+                      result.recommendations.length > 0 && (
+                        <View style={styles.recommendationsSection}>
+                          <Text style={styles.recommendationsTitle}>
+                            추천 사항
+                          </Text>
+                          {result.recommendations.map((rec, recIndex) => (
+                            <View
+                              key={recIndex}
+                              style={styles.recommendationItem}
+                            >
+                              <Text style={styles.bullet}>•</Text>
+                              <Text style={styles.recommendationText}>
+                                {rec}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
                   </View>
                 );
               })}
