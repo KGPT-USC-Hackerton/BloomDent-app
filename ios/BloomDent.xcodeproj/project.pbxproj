@@ -8,22 +8,30 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		2F1298EE9F54DCBEE0FDDB87 /* libPods-BloomDent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = E49F27D6AE38A3FB65376E8E /* libPods-BloomDent.a */; };
+		25A2F8790716C4A33B42B2A2 /* libPods-BloomDent.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F21F20CE8EBB223DCE8843C /* libPods-BloomDent.a */; };
 		65F136F637EE10418F5F2278 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		EA5A7A272EDCE71F00ECF31A /* teeth3_fp32.tflite in Resources */ = {isa = PBXBuildFile; fileRef = EA5A7A262EDCE71F00ECF31A /* teeth3_fp32.tflite */; };
+		EA92EA152EDCC73D00B8BB09 /* TeethClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA92EA132EDCC73D00B8BB09 /* TeethClassifier.swift */; };
+		EA92EA162EDCC73D00B8BB09 /* TeethClassifierBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = EA92EA142EDCC73D00B8BB09 /* TeethClassifierBridge.m */; };
+		EA92EA182EDCC74C00B8BB09 /* teeth3_dynamic.tflite in Resources */ = {isa = PBXBuildFile; fileRef = EA92EA172EDCC74C00B8BB09 /* teeth3_dynamic.tflite */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		0AE2BD901A4F1CE0B213CA20 /* Pods-BloomDent.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BloomDent.release.xcconfig"; path = "Target Support Files/Pods-BloomDent/Pods-BloomDent.release.xcconfig"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* BloomDent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BloomDent.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = BloomDent/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = BloomDent/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = BloomDent/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		1D2C35396EB012F18BFB68DC /* Pods-BloomDent.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BloomDent.debug.xcconfig"; path = "Target Support Files/Pods-BloomDent/Pods-BloomDent.debug.xcconfig"; sourceTree = "<group>"; };
+		4F21F20CE8EBB223DCE8843C /* libPods-BloomDent.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-BloomDent.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = BloomDent/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = BloomDent/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		E49F27D6AE38A3FB65376E8E /* libPods-BloomDent.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-BloomDent.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		89CE093CBE08F74EE9C6167A /* Pods-BloomDent.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BloomDent.debug.xcconfig"; path = "Target Support Files/Pods-BloomDent/Pods-BloomDent.debug.xcconfig"; sourceTree = "<group>"; };
+		D8530486A2340DF87C177CB7 /* Pods-BloomDent.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BloomDent.release.xcconfig"; path = "Target Support Files/Pods-BloomDent/Pods-BloomDent.release.xcconfig"; sourceTree = "<group>"; };
+		EA5A7A262EDCE71F00ECF31A /* teeth3_fp32.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = teeth3_fp32.tflite; sourceTree = "<group>"; };
+		EA92EA132EDCC73D00B8BB09 /* TeethClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeethClassifier.swift; sourceTree = "<group>"; };
+		EA92EA142EDCC73D00B8BB09 /* TeethClassifierBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TeethClassifierBridge.m; sourceTree = "<group>"; };
+		EA92EA172EDCC74C00B8BB09 /* teeth3_dynamic.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = teeth3_dynamic.tflite; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -32,7 +40,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2F1298EE9F54DCBEE0FDDB87 /* libPods-BloomDent.a in Frameworks */,
+				25A2F8790716C4A33B42B2A2 /* libPods-BloomDent.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -55,7 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				E49F27D6AE38A3FB65376E8E /* libPods-BloomDent.a */,
+				4F21F20CE8EBB223DCE8843C /* libPods-BloomDent.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -70,6 +78,10 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				EA5A7A262EDCE71F00ECF31A /* teeth3_fp32.tflite */,
+				EA92EA172EDCC74C00B8BB09 /* teeth3_dynamic.tflite */,
+				EA92EA132EDCC73D00B8BB09 /* TeethClassifier.swift */,
+				EA92EA142EDCC73D00B8BB09 /* TeethClassifierBridge.m */,
 				13B07FAE1A68108700A75B9A /* BloomDent */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -92,8 +104,8 @@
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
 			isa = PBXGroup;
 			children = (
-				1D2C35396EB012F18BFB68DC /* Pods-BloomDent.debug.xcconfig */,
-				0AE2BD901A4F1CE0B213CA20 /* Pods-BloomDent.release.xcconfig */,
+				89CE093CBE08F74EE9C6167A /* Pods-BloomDent.debug.xcconfig */,
+				D8530486A2340DF87C177CB7 /* Pods-BloomDent.release.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
@@ -105,13 +117,13 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "BloomDent" */;
 			buildPhases = (
-				6708FC1E6166BDF49C0BC21A /* [CP] Check Pods Manifest.lock */,
+				951AD061493E79EEDA89B88D /* [CP] Check Pods Manifest.lock */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
-				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
-				E530047FB0687A4BE6A791AE /* [CP] Embed Pods Frameworks */,
+				2E851B7CF1923B0FCCECDE13 /* [CP] Embed Pods Frameworks */,
+				9C4E0EFCC08732C7195D9C7B /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -158,7 +170,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EA92EA182EDCC74C00B8BB09 /* teeth3_dynamic.tflite in Resources */,
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
+				EA5A7A272EDCE71F00ECF31A /* teeth3_fp32.tflite in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				65F136F637EE10418F5F2278 /* PrivacyInfo.xcprivacy in Resources */,
 			);
@@ -183,7 +197,28 @@
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n";
 		};
-		6708FC1E6166BDF49C0BC21A /* [CP] Check Pods Manifest.lock */ = {
+		2E851B7CF1923B0FCCECDE13 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		951AD061493E79EEDA89B88D /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -205,7 +240,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		E235C05ADACE081382539298 /* [CP] Copy Pods Resources */ = {
+		9C4E0EFCC08732C7195D9C7B /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -226,27 +261,6 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		E530047FB0687A4BE6A791AE /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			inputPaths = (
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -254,6 +268,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EA92EA152EDCC73D00B8BB09 /* TeethClassifier.swift in Sources */,
+				EA92EA162EDCC73D00B8BB09 /* TeethClassifierBridge.m in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -263,7 +279,7 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 1D2C35396EB012F18BFB68DC /* Pods-BloomDent.debug.xcconfig */;
+			baseConfigurationReference = 89CE093CBE08F74EE9C6167A /* Pods-BloomDent.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -291,15 +307,19 @@
 				PRODUCT_NAME = BloomDent;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = BloomDent_Profile;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 0AE2BD901A4F1CE0B213CA20 /* Pods-BloomDent.release.xcconfig */;
+			baseConfigurationReference = D8530486A2340DF87C177CB7 /* Pods-BloomDent.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
@@ -326,7 +346,11 @@
 				PRODUCT_NAME = BloomDent;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = BloomDent_Profile;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;

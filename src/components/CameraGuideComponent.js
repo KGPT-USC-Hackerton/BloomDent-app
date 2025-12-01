@@ -10,7 +10,13 @@ import {
   Image, // ✅ 실제 원본 크기 계산용
   Animated,
 } from 'react-native';
-import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera';
+
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+} from 'react-native-vision-camera';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { detectLips } from '../services/lipDetectionService';
@@ -43,7 +49,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   const [cameraType, setCameraType] = useState('front');
   const device = useCameraDevice(cameraType);
   const insets = useSafeAreaInsets();
-  
+
   const [lipPoints, setLipPoints] = useState([]);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [isDetecting, setIsDetecting] = useState(false);
@@ -64,7 +70,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         Alert.alert(
           '카메라 권한 필요',
           '구강 사진 촬영을 위해 카메라 권한이 필요합니다.',
-          [{ text: '확인', onPress: onClose }]
+          [{ text: '확인', onPress: onClose }],
         );
       }
     }
@@ -73,85 +79,91 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   useEffect(() => {
     checkPermission();
     return () => {
-      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (detectionIntervalRef.current)
+        clearInterval(detectionIntervalRef.current);
       if (alignmentTimerRef.current) clearTimeout(alignmentTimerRef.current);
     };
   }, [checkPermission]);
 
   // 가이드라인 정렬 체크
-  const checkAlignment = useCallback((points, pos) => {
-    if (!points || points.length === 0) return false;
+  const checkAlignment = useCallback(
+    (points, pos) => {
+      if (!points || points.length === 0) return false;
 
-    // 뒤집힌 상태면 Y 좌표를 뒤집기
-    const adjustedPoints = isFlipped
-      ? points.map(p => ({ x: p.x, y: SCREEN_HEIGHT - p.y }))
-      : points;
+      // 뒤집힌 상태면 Y 좌표를 뒤집기
+      const adjustedPoints = isFlipped
+        ? points.map(p => ({ x: p.x, y: SCREEN_HEIGHT - p.y }))
+        : points;
 
-    const guideStyle = getGuideStyle(pos, guideVerticalPosition);
-    // 뒤집힌 상태면 가이드라인 Y 위치도 뒤집기
-    const guideY = isFlipped
-      ? SCREEN_HEIGHT - guideStyle.top - guideStyle.height
-      : guideStyle.top;
-    
-    const guideBounds = {
-      x: guideStyle.left,
-      y: guideY,
-      width: guideStyle.width,
-      height: guideStyle.height,
-    };
+      const guideStyle = getGuideStyle(pos, guideVerticalPosition);
+      // 뒤집힌 상태면 가이드라인 Y 위치도 뒤집기
+      const guideY = isFlipped
+        ? SCREEN_HEIGHT - guideStyle.top - guideStyle.height
+        : guideStyle.top;
 
-    const lipMinX = Math.min(...adjustedPoints.map(p => p.x));
-    const lipMaxX = Math.max(...adjustedPoints.map(p => p.x));
-    const lipMinY = Math.min(...adjustedPoints.map(p => p.y));
-    const lipMaxY = Math.max(...adjustedPoints.map(p => p.y));
-    const lipWidth = lipMaxX - lipMinX;
-    const lipHeight = lipMaxY - lipMinY;
-    const lipArea = lipWidth * lipHeight;
+      const guideBounds = {
+        x: guideStyle.left,
+        y: guideY,
+        width: guideStyle.width,
+        height: guideStyle.height,
+      };
 
-    const lipCenterX = (lipMinX + lipMaxX) / 2;
-    const lipCenterY = (lipMinY + lipMaxY) / 2;
+      const lipMinX = Math.min(...adjustedPoints.map(p => p.x));
+      const lipMaxX = Math.max(...adjustedPoints.map(p => p.x));
+      const lipMinY = Math.min(...adjustedPoints.map(p => p.y));
+      const lipMaxY = Math.max(...adjustedPoints.map(p => p.y));
+      const lipWidth = lipMaxX - lipMinX;
+      const lipHeight = lipMaxY - lipMinY;
+      const lipArea = lipWidth * lipHeight;
 
-    const guideCenterX = guideBounds.x + guideBounds.width / 2;
-    const guideCenterY = guideBounds.y + guideBounds.height / 2;
+      const lipCenterX = (lipMinX + lipMaxX) / 2;
+      const lipCenterY = (lipMinY + lipMaxY) / 2;
 
-    const overlapMinX = Math.max(lipMinX, guideBounds.x);
-    const overlapMaxX = Math.min(lipMaxX, guideBounds.x + guideBounds.width);
-    const overlapMinY = Math.max(lipMinY, guideBounds.y);
-    const overlapMaxY = Math.min(lipMaxY, guideBounds.y + guideBounds.height);
+      const guideCenterX = guideBounds.x + guideBounds.width / 2;
+      const guideCenterY = guideBounds.y + guideBounds.height / 2;
 
-    const overlapWidth = Math.max(0, overlapMaxX - overlapMinX);
-    const overlapHeight = Math.max(0, overlapMaxY - overlapMinY);
-    const overlapArea = overlapWidth * overlapHeight;
+      const overlapMinX = Math.max(lipMinX, guideBounds.x);
+      const overlapMaxX = Math.min(lipMaxX, guideBounds.x + guideBounds.width);
+      const overlapMinY = Math.max(lipMinY, guideBounds.y);
+      const overlapMaxY = Math.min(lipMaxY, guideBounds.y + guideBounds.height);
 
-    const guideArea = guideBounds.width * guideBounds.height;
-    const unionArea = lipArea + guideArea - overlapArea;
-    const overlapRatio = unionArea > 0 ? overlapArea / unionArea : 0;
-    const lipOverlapRatio = lipArea > 0 ? overlapArea / lipArea : 0;
-    const guideOverlapRatio = guideArea > 0 ? overlapArea / guideArea : 0;
+      const overlapWidth = Math.max(0, overlapMaxX - overlapMinX);
+      const overlapHeight = Math.max(0, overlapMaxY - overlapMinY);
+      const overlapArea = overlapWidth * overlapHeight;
 
-    const centerDistanceX = Math.abs(lipCenterX - guideCenterX) / guideBounds.width;
-    const centerDistanceY = Math.abs(lipCenterY - guideCenterY) / guideBounds.height;
-    const normalizedCenterDistance = Math.sqrt(
-      centerDistanceX * centerDistanceX + centerDistanceY * centerDistanceY
-    );
+      const guideArea = guideBounds.width * guideBounds.height;
+      const unionArea = lipArea + guideArea - overlapArea;
+      const overlapRatio = unionArea > 0 ? overlapArea / unionArea : 0;
+      const lipOverlapRatio = lipArea > 0 ? overlapArea / lipArea : 0;
+      const guideOverlapRatio = guideArea > 0 ? overlapArea / guideArea : 0;
 
-    const isOptimalAlignment = 
-      overlapRatio >= 0.4 &&
-      lipOverlapRatio >= 0.5 &&
-      guideOverlapRatio >= 0.5 &&
-      normalizedCenterDistance <= 0.3;
+      const centerDistanceX =
+        Math.abs(lipCenterX - guideCenterX) / guideBounds.width;
+      const centerDistanceY =
+        Math.abs(lipCenterY - guideCenterY) / guideBounds.height;
+      const normalizedCenterDistance = Math.sqrt(
+        centerDistanceX * centerDistanceX + centerDistanceY * centerDistanceY,
+      );
 
-    if (isOptimalAlignment) {
-      console.log('🎯 최적 겹침 조건:', {
-        overlapRatio: (overlapRatio * 100).toFixed(1) + '%',
-        lipOverlapRatio: (lipOverlapRatio * 100).toFixed(1) + '%',
-        guideOverlapRatio: (guideOverlapRatio * 100).toFixed(1) + '%',
-        centerDistance: (normalizedCenterDistance * 100).toFixed(1) + '%',
-      });
-    }
+      const isOptimalAlignment =
+        overlapRatio >= 0.4 &&
+        lipOverlapRatio >= 0.5 &&
+        guideOverlapRatio >= 0.5 &&
+        normalizedCenterDistance <= 0.3;
 
-    return isOptimalAlignment;
-  }, [guideVerticalPosition, isFlipped]);
+      if (isOptimalAlignment) {
+        console.log('🎯 최적 겹침 조건:', {
+          overlapRatio: (overlapRatio * 100).toFixed(1) + '%',
+          lipOverlapRatio: (lipOverlapRatio * 100).toFixed(1) + '%',
+          guideOverlapRatio: (guideOverlapRatio * 100).toFixed(1) + '%',
+          centerDistance: (normalizedCenterDistance * 100).toFixed(1) + '%',
+        });
+      }
+
+      return isOptimalAlignment;
+    },
+    [guideVerticalPosition, isFlipped],
+  );
 
   // 플래시 효과
   const triggerFlash = useCallback(() => {
@@ -160,163 +172,216 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   }, []);
 
   // ✅ 입술 영역 크롭 (crop rectangle 완전 방어)
-  const cropLipArea = useCallback(async (photoPath, rawWidth, rawHeight) => {
-    try {
-      if (!ImageManipulator || typeof ImageManipulator.manipulate !== 'function') {
-        console.warn('⚠️ ImageManipulator 사용 불가 - 원본 반환');
-        return photoPath;
-      }
-
-      let imageWidth = rawWidth;
-      let imageHeight = rawHeight;
-
-      // 실제 원본 크기 우선 사용
+  const cropLipArea = useCallback(
+    async (photoPath, rawWidth, rawHeight) => {
       try {
-        const realSize = await getRealImageSize(photoPath);
-        imageWidth = realSize.width;
-        imageHeight = realSize.height;
-      } catch (e) {
-        console.warn('⚠️ Image.getSize 실패, VisionCamera width/height 사용', e?.message);
-      }
+        if (
+          !ImageManipulator ||
+          typeof ImageManipulator.manipulate !== 'function'
+        ) {
+          console.warn('⚠️ ImageManipulator 사용 불가 - 원본 반환');
+          return photoPath;
+        }
 
-      if (!imageWidth || !imageHeight) {
-        console.warn('⚠️ 이미지 크기 알 수 없음 - 원본 반환');
-        return photoPath;
-      }
+        let imageWidth = rawWidth;
+        let imageHeight = rawHeight;
 
-      const result = await detectLips(photoPath);
-      let cropX;
-      let cropY;
-      let cropWidth;
-      let cropHeight;
-      let useLipDetection = false;
-      
-      if (result.success && result.data?.faceDetected && Array.isArray(result.data.lipPoints) && result.data.lipPoints.length > 0) {
-        // 입술 검출 성공 - 입술 영역 기준으로 크롭
-        const detectedLipPoints = result.data.lipPoints;
-        const detectedImageWidth = result.data.width || imageWidth;
-        const detectedImageHeight = result.data.height || imageHeight;
+        // 실제 원본 크기 우선 사용
+        try {
+          const realSize = await getRealImageSize(photoPath);
+          imageWidth = realSize.width;
+          imageHeight = realSize.height;
+        } catch (e) {
+          console.warn(
+            '⚠️ Image.getSize 실패, VisionCamera width/height 사용',
+            e?.message,
+          );
+        }
 
-        const scaleX = imageWidth / detectedImageWidth;
-        const scaleY = imageHeight / detectedImageHeight;
+        if (!imageWidth || !imageHeight) {
+          console.warn('⚠️ 이미지 크기 알 수 없음 - 원본 반환');
+          return photoPath;
+        }
 
-        const scaledLipPoints = detectedLipPoints.map(p => ({
-          x: p.x * scaleX,
-          y: p.y * scaleY,
-        }));
+        const result = await detectLips(photoPath);
+        let cropX;
+        let cropY;
+        let cropWidth;
+        let cropHeight;
+        let useLipDetection = false;
 
-        const xs = scaledLipPoints.map(p => p.x);
-        const ys = scaledLipPoints.map(p => p.y);
-        const minX = Math.min(...xs);
-        const maxX = Math.max(...xs);
-        const minY = Math.min(...ys);
-        const maxY = Math.max(...ys);
+        if (
+          result.success &&
+          result.data?.faceDetected &&
+          Array.isArray(result.data.lipPoints) &&
+          result.data.lipPoints.length > 0
+        ) {
+          // 입술 검출 성공 - 입술 영역 기준으로 크롭
+          const detectedLipPoints = result.data.lipPoints;
+          const detectedImageWidth = result.data.width || imageWidth;
+          const detectedImageHeight = result.data.height || imageHeight;
 
-        if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
-          console.warn('⚠️ 입술 좌표 이상 - 가이드라인 기준으로 크롭');
-          // 입술 좌표가 이상하면 가이드라인 기준으로 크롭하도록 fallback
-          useLipDetection = false;
+          const scaleX = imageWidth / detectedImageWidth;
+          const scaleY = imageHeight / detectedImageHeight;
+
+          const scaledLipPoints = detectedLipPoints.map(p => ({
+            x: p.x * scaleX,
+            y: p.y * scaleY,
+          }));
+
+          const xs = scaledLipPoints.map(p => p.x);
+          const ys = scaledLipPoints.map(p => p.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+
+          if (
+            !isFinite(minX) ||
+            !isFinite(maxX) ||
+            !isFinite(minY) ||
+            !isFinite(maxY)
+          ) {
+            console.warn('⚠️ 입술 좌표 이상 - 가이드라인 기준으로 크롭');
+            // 입술 좌표가 이상하면 가이드라인 기준으로 크롭하도록 fallback
+            useLipDetection = false;
+          } else {
+            const lipWidth = maxX - minX;
+            const lipHeight = maxY - minY;
+            const lipCenterX = (minX + maxX) / 2;
+            const lipCenterY = (minY + maxY) / 2;
+
+            // 가로/세로 여유 공간을 다르게 설정 (세로는 더 작게)
+            const paddingRatioX = 0.2; // 가로 여유 공간 20%
+            const paddingRatioY = 0.1; // 세로 여유 공간 10% (더 타이트하게)
+            const paddingX = lipWidth * paddingRatioX;
+            const paddingY = lipHeight * paddingRatioY;
+            const minCropSize = 80;
+
+            const desiredCropWidth = Math.max(
+              lipWidth + 2 * paddingX,
+              minCropSize,
+            );
+            const desiredCropHeight = Math.max(
+              lipHeight + 2 * paddingY,
+              minCropSize,
+            );
+
+            cropX = lipCenterX - desiredCropWidth / 2;
+            cropY = lipCenterY - desiredCropHeight / 2;
+            cropWidth = desiredCropWidth;
+            cropHeight = desiredCropHeight;
+            useLipDetection = true;
+          }
+        }
+
+        // 입술 검출 실패 또는 좌표 이상 시 가이드라인 위치 기준으로 크롭
+        if (
+          !useLipDetection ||
+          cropX === undefined ||
+          cropY === undefined ||
+          cropWidth === undefined ||
+          cropHeight === undefined
+        ) {
+          console.log(
+            '📐 입술 검출 실패 또는 변수 미정의 - 가이드라인 위치 기준으로 크롭',
+          );
+
+          // 가이드라인 스타일 가져오기 (화면 좌표 기준)
+          const guideStyle = getGuideStyle(position, guideVerticalPosition);
+
+          // 화면 좌표를 이미지 좌표로 변환
+          const screenToImageScaleX = imageWidth / SCREEN_WIDTH;
+          const screenToImageScaleY = imageHeight / SCREEN_HEIGHT;
+
+          // 가이드라인 영역을 이미지 좌표로 변환
+          let guideImageX = guideStyle.left * screenToImageScaleX;
+          let guideImageY = guideStyle.top * screenToImageScaleY;
+          const guideImageWidth = guideStyle.width * screenToImageScaleX;
+          const guideImageHeight = guideStyle.height * screenToImageScaleY;
+
+          // 뒤집힌 상태면 Y 좌표를 뒤집기
+          if (isFlipped) {
+            guideImageY = imageHeight - guideImageY - guideImageHeight;
+          }
+
+          // 여유 공간 추가 (가이드라인보다 조금 더 크게)
+          const paddingRatio = 0.3; // 30% 여유 공간
+          const paddingX = guideImageWidth * paddingRatio;
+          const paddingY = guideImageHeight * paddingRatio;
+
+          cropX = Math.max(0, guideImageX - paddingX);
+          cropY = Math.max(0, guideImageY - paddingY);
+          cropWidth = Math.min(
+            imageWidth - cropX,
+            guideImageWidth + 2 * paddingX,
+          );
+          cropHeight = Math.min(
+            imageHeight - cropY,
+            guideImageHeight + 2 * paddingY,
+          );
+
+          // 최소 크기 보장
+          const minCropSize = 200;
+          if (cropWidth < minCropSize) {
+            cropX = Math.max(0, (imageWidth - minCropSize) / 2);
+            cropWidth = Math.min(minCropSize, imageWidth);
+          }
+          if (cropHeight < minCropSize) {
+            cropY = Math.max(0, (imageHeight - minCropSize) / 2);
+            cropHeight = Math.min(minCropSize, imageHeight);
+          }
+        }
+
+        // 경계 안으로 클램프 (변수가 정의되었는지 확인)
+        if (
+          cropX !== undefined &&
+          cropY !== undefined &&
+          cropWidth !== undefined &&
+          cropHeight !== undefined
+        ) {
+          cropX = Math.max(0, Math.min(cropX, imageWidth - cropWidth));
+          cropY = Math.max(0, Math.min(cropY, imageHeight - cropHeight));
+          cropWidth = Math.min(cropWidth, imageWidth - cropX);
+          cropHeight = Math.min(cropHeight, imageHeight - cropY);
         } else {
-          const lipWidth = maxX - minX;
-          const lipHeight = maxY - minY;
-          const lipCenterX = (minX + maxX) / 2;
-          const lipCenterY = (minY + maxY) / 2;
-
-          // 가로/세로 여유 공간을 다르게 설정 (세로는 더 작게)
-          const paddingRatioX = 0.2; // 가로 여유 공간 20%
-          const paddingRatioY = 0.1; // 세로 여유 공간 10% (더 타이트하게)
-          const paddingX = lipWidth * paddingRatioX;
-          const paddingY = lipHeight * paddingRatioY;
-          const minCropSize = 80;
-
-          const desiredCropWidth = Math.max(lipWidth + 2 * paddingX, minCropSize);
-          const desiredCropHeight = Math.max(lipHeight + 2 * paddingY, minCropSize);
-
-          cropX = lipCenterX - desiredCropWidth / 2;
-          cropY = lipCenterY - desiredCropHeight / 2;
-          cropWidth = desiredCropWidth;
-          cropHeight = desiredCropHeight;
-          useLipDetection = true;
+          console.warn('⚠️ 크롭 변수가 정의되지 않음 - 원본 반환');
+          return photoPath;
         }
-      }
-      
-      // 입술 검출 실패 또는 좌표 이상 시 가이드라인 위치 기준으로 크롭
-      if (!useLipDetection || cropX === undefined || cropY === undefined || cropWidth === undefined || cropHeight === undefined) {
-        console.log('📐 입술 검출 실패 또는 변수 미정의 - 가이드라인 위치 기준으로 크롭');
-        
-        // 가이드라인 스타일 가져오기 (화면 좌표 기준)
-        const guideStyle = getGuideStyle(position, guideVerticalPosition);
-        
-        // 화면 좌표를 이미지 좌표로 변환
-        const screenToImageScaleX = imageWidth / SCREEN_WIDTH;
-        const screenToImageScaleY = imageHeight / SCREEN_HEIGHT;
-        
-        // 가이드라인 영역을 이미지 좌표로 변환
-        let guideImageX = guideStyle.left * screenToImageScaleX;
-        let guideImageY = guideStyle.top * screenToImageScaleY;
-        const guideImageWidth = guideStyle.width * screenToImageScaleX;
-        const guideImageHeight = guideStyle.height * screenToImageScaleY;
-        
-        // 뒤집힌 상태면 Y 좌표를 뒤집기
-        if (isFlipped) {
-          guideImageY = imageHeight - guideImageY - guideImageHeight;
+
+        // 너무 작으면 최소값 보장
+        if (cropWidth < 1 || cropHeight < 1) {
+          console.warn('⚠️ 크롭 영역 너무 작음 - 원본 반환');
+          return photoPath;
         }
-        
-        // 여유 공간 추가 (가이드라인보다 조금 더 크게)
-        const paddingRatio = 0.3; // 30% 여유 공간
-        const paddingX = guideImageWidth * paddingRatio;
-        const paddingY = guideImageHeight * paddingRatio;
-        
-        cropX = Math.max(0, guideImageX - paddingX);
-        cropY = Math.max(0, guideImageY - paddingY);
-        cropWidth = Math.min(imageWidth - cropX, guideImageWidth + 2 * paddingX);
-        cropHeight = Math.min(imageHeight - cropY, guideImageHeight + 2 * paddingY);
-        
-        // 최소 크기 보장
-        const minCropSize = 200;
-        if (cropWidth < minCropSize) {
-          cropX = Math.max(0, (imageWidth - minCropSize) / 2);
-          cropWidth = Math.min(minCropSize, imageWidth);
+
+        // 정수로 반올림 후 다시 한 번 경계 체크
+        const originX = Math.floor(cropX);
+        const originY = Math.floor(cropY);
+        const width = Math.floor(cropWidth);
+        const height = Math.floor(cropHeight);
+
+        const isValidCrop =
+          originX >= 0 &&
+          originY >= 0 &&
+          width > 0 &&
+          height > 0 &&
+          originX + width <= imageWidth &&
+          originY + height <= imageHeight;
+
+        if (!isValidCrop) {
+          console.warn('⚠️ 최종 크롭 영역이 이미지 밖입니다 - 원본 반환', {
+            originX,
+            originY,
+            width,
+            height,
+            imageWidth,
+            imageHeight,
+          });
+          return photoPath;
         }
-        if (cropHeight < minCropSize) {
-          cropY = Math.max(0, (imageHeight - minCropSize) / 2);
-          cropHeight = Math.min(minCropSize, imageHeight);
-        }
-      }
 
-      // 경계 안으로 클램프 (변수가 정의되었는지 확인)
-      if (cropX !== undefined && cropY !== undefined && cropWidth !== undefined && cropHeight !== undefined) {
-        cropX = Math.max(0, Math.min(cropX, imageWidth - cropWidth));
-        cropY = Math.max(0, Math.min(cropY, imageHeight - cropHeight));
-        cropWidth = Math.min(cropWidth, imageWidth - cropX);
-        cropHeight = Math.min(cropHeight, imageHeight - cropY);
-      } else {
-        console.warn('⚠️ 크롭 변수가 정의되지 않음 - 원본 반환');
-        return photoPath;
-      }
-
-      // 너무 작으면 최소값 보장
-      if (cropWidth < 1 || cropHeight < 1) {
-        console.warn('⚠️ 크롭 영역 너무 작음 - 원본 반환');
-        return photoPath;
-      }
-
-      // 정수로 반올림 후 다시 한 번 경계 체크
-      const originX = Math.floor(cropX);
-      const originY = Math.floor(cropY);
-      const width = Math.floor(cropWidth);
-      const height = Math.floor(cropHeight);
-
-      const isValidCrop =
-        originX >= 0 &&
-        originY >= 0 &&
-        width > 0 &&
-        height > 0 &&
-        originX + width <= imageWidth &&
-        originY + height <= imageHeight;
-
-      if (!isValidCrop) {
-        console.warn('⚠️ 최종 크롭 영역이 이미지 밖입니다 - 원본 반환', {
+        console.log('✂️ 최종 크롭 영역:', {
           originX,
           originY,
           width,
@@ -324,49 +389,45 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
           imageWidth,
           imageHeight,
         });
-        return photoPath;
-      }
 
-      console.log('✂️ 최종 크롭 영역:', {
-        originX,
-        originY,
-        width,
-        height,
-        imageWidth,
-        imageHeight,
-      });
-
-      const manipulatedImage = await ImageManipulator.manipulate(
-        photoPath,
-        [
-          {
-            crop: {
-              originX,
-              originY,
-              width,
-              height,
+        const manipulatedImage = await ImageManipulator.manipulate(
+          photoPath,
+          [
+            {
+              crop: {
+                originX,
+                originY,
+                width,
+                height,
+              },
             },
-          },
-        ],
-        { compress: 0.9, format: 'jpeg' }
-      );
+          ],
+          { compress: 0.9, format: 'jpeg' },
+        );
 
-      if (!manipulatedImage?.uri) {
-        console.warn('⚠️ 크롭 결과 URI 없음 - 원본 반환');
+        if (!manipulatedImage?.uri) {
+          console.warn('⚠️ 크롭 결과 URI 없음 - 원본 반환');
+          return photoPath;
+        }
+
+        console.log('✅ 입술 영역 크롭 완료:', manipulatedImage.uri);
+        return manipulatedImage.uri;
+      } catch (error) {
+        console.error('❌ 입술 영역 크롭 오류:', error);
         return photoPath;
       }
-
-      console.log('✅ 입술 영역 크롭 완료:', manipulatedImage.uri);
-      return manipulatedImage.uri;
-    } catch (error) {
-      console.error('❌ 입술 영역 크롭 오류:', error);
-      return photoPath;
-    }
-  }, [position, guideVerticalPosition, isFlipped]);
+    },
+    [position, guideVerticalPosition, isFlipped],
+  );
 
   // 자동 촬영 실행
   const triggerAutoCapture = useCallback(async () => {
-    if (autoCaptureTriggeredRef.current || isCapturing || !camera.current || !isReady) {
+    if (
+      autoCaptureTriggeredRef.current ||
+      isCapturing ||
+      !camera.current ||
+      !isReady
+    ) {
       return;
     }
 
@@ -383,11 +444,15 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         enableShutterSound: false,
       });
 
-      const photoPath = photo.path.startsWith('file://') 
-        ? photo.path 
+      const photoPath = photo.path.startsWith('file://')
+        ? photo.path
         : `file://${photo.path}`;
 
-      const croppedPath = await cropLipArea(photoPath, photo.width, photo.height);
+      const croppedPath = await cropLipArea(
+        photoPath,
+        photo.width,
+        photo.height,
+      );
 
       const cropRatio = croppedPath !== photoPath ? 0.7 : 1.0;
       const asset = {
@@ -419,7 +484,13 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
   // 0.5초마다 사진 촬영 및 입술 검출
   const captureAndUploadPhoto = useCallback(async () => {
-    if (!camera.current || isProcessingRef.current || !hasPermission || !isReady) return;
+    if (
+      !camera.current ||
+      isProcessingRef.current ||
+      !hasPermission ||
+      !isReady
+    )
+      return;
 
     if (isProcessingRef.current) return;
 
@@ -457,7 +528,10 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
             y: point.y * scaleY,
           }));
 
-          if (screenPoints.length > 0 && checkAlignment(screenPoints, position)) {
+          if (
+            screenPoints.length > 0 &&
+            checkAlignment(screenPoints, position)
+          ) {
             if (!alignmentTimerRef.current) {
               console.log('🎯 구도 적합 - 3초 유지 대기 중...');
               alignmentTimerRef.current = setTimeout(() => {
@@ -495,7 +569,12 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
   // 수동 촬영
   const takePhoto = async () => {
-    console.log('📸 촬영 시도 - 카메라 준비:', isReady, '카메라 ref:', !!camera.current);
+    console.log(
+      '📸 촬영 시도 - 카메라 준비:',
+      isReady,
+      '카메라 ref:',
+      !!camera.current,
+    );
 
     if (!camera.current || !isReady || isCapturing || !hasPermission) {
       console.warn('⚠️ 촬영 불가 - 카메라가 준비되지 않음');
@@ -516,7 +595,11 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         ? photo.path
         : `file://${photo.path}`;
 
-      const croppedPath = await cropLipArea(photoPath, photo.width, photo.height);
+      const croppedPath = await cropLipArea(
+        photoPath,
+        photo.width,
+        photo.height,
+      );
 
       const cropRatio = croppedPath !== photoPath ? 0.7 : 1.0;
       const asset = {
@@ -567,12 +650,14 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
       return () => {
         clearTimeout(initialDelay);
-        if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+        if (detectionIntervalRef.current)
+          clearInterval(detectionIntervalRef.current);
       };
     }
 
     return () => {
-      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (detectionIntervalRef.current)
+        clearInterval(detectionIntervalRef.current);
     };
   }, [hasPermission, device, isReady, isCameraActive, captureAndUploadPhoto]);
 
@@ -581,7 +666,10 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
       <View style={styles.container}>
         <View style={styles.permissionContainer}>
           <Text style={styles.permissionText}>카메라 권한이 필요합니다</Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={checkPermission}>
+          <TouchableOpacity
+            style={styles.permissionButton}
+            onPress={checkPermission}
+          >
             <Text style={styles.permissionButtonText}>권한 요청</Text>
           </TouchableOpacity>
         </View>
@@ -609,7 +697,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
           isActive={isCameraActive}
           photo={true}
           onInitialized={handleCameraReady}
-          onError={(error) => {
+          onError={error => {
             console.error('Camera error:', error);
             console.error('Error code:', error.code);
             console.error('Error message:', error.message);
@@ -621,12 +709,16 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
       <View style={styles.overlay}>
         <View style={styles.guideContainer}>
-          <MouthGuide position={position} verticalPosition={guideVerticalPosition} flipAnimation={flipAnimation} />
+          <MouthGuide
+            position={position}
+            verticalPosition={guideVerticalPosition}
+            flipAnimation={flipAnimation}
+          />
         </View>
 
         {lipPoints.length > 0 && imageSize.width > 0 && (
-          <LipOverlay 
-            lipPoints={lipPoints} 
+          <LipOverlay
+            lipPoints={lipPoints}
             imageSize={imageSize}
             screenWidth={SCREEN_WIDTH}
             screenHeight={SCREEN_HEIGHT}
@@ -635,11 +727,15 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         )}
       </View>
 
-      <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}>
+      <View
+        style={[styles.bottomControls, { paddingBottom: insets.bottom + 20 }]}
+      >
         <View style={styles.bottomHeader}>
           <View style={styles.titleContainer}>
             <Text style={styles.title}>{POSITION_LABELS[position]} 촬영</Text>
-            <Text style={styles.subtitle}>가이드라인에 맞춰 입을 맞춰주세요</Text>
+            <Text style={styles.subtitle}>
+              가이드라인에 맞춰 입을 맞춰주세요
+            </Text>
           </View>
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Text style={styles.closeButtonText}>✕</Text>
@@ -651,7 +747,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
           <TouchableOpacity
             style={styles.flipButton}
             onPress={() => {
-              setCameraType(prev => prev === 'front' ? 'back' : 'front');
+              setCameraType(prev => (prev === 'front' ? 'back' : 'front'));
               setIsReady(false);
               setLipPoints([]);
               setImageSize({ width: 0, height: 0 });
@@ -668,7 +764,10 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
           <View style={styles.captureButtonContainer}>
             {isReady ? (
               <TouchableOpacity
-                style={[styles.captureButton, isCapturing && styles.captureButtonDisabled]}
+                style={[
+                  styles.captureButton,
+                  isCapturing && styles.captureButtonDisabled,
+                ]}
                 onPress={takePhoto}
                 disabled={isCapturing}
               >
@@ -697,7 +796,11 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
             }}
           >
             <Text style={styles.guidePositionButtonText}>
-              {guideVerticalPosition === 'top' ? '⬆️' : guideVerticalPosition === 'center' ? '↕️' : '⬇️'}
+              {guideVerticalPosition === 'top'
+                ? '⬆️'
+                : guideVerticalPosition === 'center'
+                ? '↕️'
+                : '⬇️'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -708,14 +811,20 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
 // ====== 오버레이 컴포넌트들 ======
 
-function LipOverlay({ lipPoints, imageSize, screenWidth, screenHeight, isFlipped = false }) {
+function LipOverlay({
+  lipPoints,
+  imageSize,
+  screenWidth,
+  screenHeight,
+  isFlipped = false,
+}) {
   const scaleX = screenWidth / imageSize.width;
   const scaleY = screenHeight / imageSize.height;
 
   const screenPoints = lipPoints.map(point => {
     const x = point.x * scaleX;
     const y = point.y * scaleY;
-    
+
     // 가이드라인이 뒤집혔으면 Y 좌표도 뒤집기 (화면 중앙 기준)
     if (isFlipped) {
       return {
@@ -723,7 +832,7 @@ function LipOverlay({ lipPoints, imageSize, screenWidth, screenHeight, isFlipped
         y: screenHeight - y,
       };
     }
-    
+
     return { x, y };
   });
 
@@ -733,7 +842,11 @@ function LipOverlay({ lipPoints, imageSize, screenWidth, screenHeight, isFlipped
       .join(' ') + ' Z';
 
   return (
-    <Svg style={StyleSheet.absoluteFill} width={screenWidth} height={screenHeight}>
+    <Svg
+      style={StyleSheet.absoluteFill}
+      width={screenWidth}
+      height={screenHeight}
+    >
       <Path
         d={pathData}
         fill="none"
@@ -848,7 +961,7 @@ function getGuideStyle(position, verticalPosition = 'center') {
   const baseSize = SCREEN_WIDTH * 0.7;
   const centerX = SCREEN_WIDTH / 2;
   const centerY = SCREEN_HEIGHT / 2;
-  
+
   // 세로 위치에 따른 top 값 계산
   let topOffset;
   switch (verticalPosition) {
