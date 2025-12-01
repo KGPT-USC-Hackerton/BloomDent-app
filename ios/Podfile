@@ -28,16 +28,12 @@ target 'BloomDent' do
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
-  pod 'TensorFlowLiteSwift'
 
-<<<<<<< HEAD
   # ✅ TFLite Swift 인터프리터 사용
   #  (예전에 TensorFlowLiteC 썼다면 그 줄은 삭제!)
   pod 'TensorFlowLiteSwift'
 
-=======
-  
->>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
+
   post_install do |installer|
     react_native_post_install(
       installer,
