@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import SurveyComponent from '../components/SurveyComponent';
 import PhotoAnalysisComponent from '../components/PhotoAnalysisComponent';
 import OralCareRecordComponent from '../components/OralCareRecordComponent';
+import PhotoAnalysisHistoryList from '../components/PhotoAnalysisHistoryList';
 
 const tabs = [
   { id: 'survey', label: '설문조사' },
@@ -26,6 +27,7 @@ export default function CareScreen({ route }) {
   const [activeTab, setActiveTab] = useState('survey');
   const [userId, setUserId] = useState(null);
   const [isSurveyStarted, setIsSurveyStarted] = useState(false);
+  const [isPhotoSession, setIsPhotoSession] = useState(false);
 
   // score_history 기반 기록
   const [records, setRecords] = useState([]);
@@ -57,12 +59,16 @@ export default function CareScreen({ route }) {
     })();
   }, []);
 
-  // 탭 변경 시 설문 숨기기
+  // 탭 변경 시 설문 / 사진 촬영 세션 모두 초기화
   useEffect(() => {
     if (activeTab !== 'survey') {
       setIsSurveyStarted(false);
     }
+    if (activeTab !== 'photo') {
+      setIsPhotoSession(false); // 🔥 다른 탭 갔다 오면 촬영 세션 종료 상태로
+    }
   }, [activeTab]);
+
   // ✅ score_history 불러오기 (userId, reloadKey가 바뀔 때마다)
   useEffect(() => {
     if (!userId) return;
@@ -213,7 +219,6 @@ export default function CareScreen({ route }) {
         '설문 완료',
         '설문 결과 분석과 맞춤형 구강 용품 추천이 완료되었습니다.',
       );
-      // ... 성공 시 Alert 표시 ...
     } catch (error) {
       console.error('설문 분석/추천 처리 오류:', error);
       Alert.alert(
@@ -299,7 +304,7 @@ export default function CareScreen({ route }) {
 
             {/* ✅ 설문을 시작하지 않았을 때만 기록 섹션 보이기 */}
             {!isSurveyStarted && (
-              <View style={styles.historySection}>
+              <View className="historySection" style={styles.historySection}>
                 {recordsLoading && (
                   <View style={styles.historyLoading}>
                     <ActivityIndicator size="small" color="#2563eb" />
@@ -336,7 +341,18 @@ export default function CareScreen({ route }) {
         {/* 구강 사진 분석 탭 */}
         {activeTab === 'photo' && (
           <View style={styles.section}>
-            <PhotoAnalysisComponent backendBaseUrl={BACKEND_BASE_URL} />
+            {/* 📷 1) 사진 촬영 + 분석 UI */}
+            <PhotoAnalysisComponent
+              backendBaseUrl={BACKEND_BASE_URL}
+              onSessionStateChange={setIsPhotoSession}
+            />
+
+            {/* 📘 2) 최근 구강 사진 분석 기록 리스트 (촬영 중일 땐 숨김) */}
+            {!isPhotoSession && (
+              <View style={styles.photoHistorySection}>
+                <PhotoAnalysisHistoryList />
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -436,7 +452,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // 기록 섹션
+  // 설문 기록 섹션
   historySection: {
     marginTop: 28,
   },
@@ -476,5 +492,10 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 13,
     color: '#6b7280',
+  },
+
+  // 📷 구강 사진 분석 기록 섹션 여백
+  photoHistorySection: {
+    marginTop: 28,
   },
 });

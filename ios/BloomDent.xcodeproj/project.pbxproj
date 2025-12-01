@@ -12,15 +12,10 @@
 		65F136F637EE10418F5F2278 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
-<<<<<<< HEAD
 		EA5A7A272EDCE71F00ECF31A /* teeth3_fp32.tflite in Resources */ = {isa = PBXBuildFile; fileRef = EA5A7A262EDCE71F00ECF31A /* teeth3_fp32.tflite */; };
 		EA92EA152EDCC73D00B8BB09 /* TeethClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA92EA132EDCC73D00B8BB09 /* TeethClassifier.swift */; };
 		EA92EA162EDCC73D00B8BB09 /* TeethClassifierBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = EA92EA142EDCC73D00B8BB09 /* TeethClassifierBridge.m */; };
 		EA92EA182EDCC74C00B8BB09 /* teeth3_dynamic.tflite in Resources */ = {isa = PBXBuildFile; fileRef = EA92EA172EDCC74C00B8BB09 /* teeth3_dynamic.tflite */; };
-=======
-		EA890E4E2EDCA11C008116D5 /* TeethClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA890E4D2EDCA10E008116D5 /* TeethClassifier.swift */; };
-		EA890E502EDCA19B008116D5 /* teeth3_dynamic.tflite in Resources */ = {isa = PBXBuildFile; fileRef = EA890E4F2EDCA19B008116D5 /* teeth3_dynamic.tflite */; };
->>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,18 +26,12 @@
 		4F21F20CE8EBB223DCE8843C /* libPods-BloomDent.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-BloomDent.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = BloomDent/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = BloomDent/LaunchScreen.storyboard; sourceTree = "<group>"; };
-<<<<<<< HEAD
 		89CE093CBE08F74EE9C6167A /* Pods-BloomDent.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BloomDent.debug.xcconfig"; path = "Target Support Files/Pods-BloomDent/Pods-BloomDent.debug.xcconfig"; sourceTree = "<group>"; };
 		D8530486A2340DF87C177CB7 /* Pods-BloomDent.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BloomDent.release.xcconfig"; path = "Target Support Files/Pods-BloomDent/Pods-BloomDent.release.xcconfig"; sourceTree = "<group>"; };
 		EA5A7A262EDCE71F00ECF31A /* teeth3_fp32.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = teeth3_fp32.tflite; sourceTree = "<group>"; };
 		EA92EA132EDCC73D00B8BB09 /* TeethClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeethClassifier.swift; sourceTree = "<group>"; };
 		EA92EA142EDCC73D00B8BB09 /* TeethClassifierBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TeethClassifierBridge.m; sourceTree = "<group>"; };
 		EA92EA172EDCC74C00B8BB09 /* teeth3_dynamic.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = teeth3_dynamic.tflite; sourceTree = "<group>"; };
-=======
-		E49F27D6AE38A3FB65376E8E /* libPods-BloomDent.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-BloomDent.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		EA890E4D2EDCA10E008116D5 /* TeethClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeethClassifier.swift; sourceTree = "<group>"; };
-		EA890E4F2EDCA19B008116D5 /* teeth3_dynamic.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = teeth3_dynamic.tflite; sourceTree = "<group>"; };
->>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -61,8 +50,6 @@
 		13B07FAE1A68108700A75B9A /* BloomDent */ = {
 			isa = PBXGroup;
 			children = (
-				EA890E4F2EDCA19B008116D5 /* teeth3_dynamic.tflite */,
-				EA890E4D2EDCA10E008116D5 /* TeethClassifier.swift */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
@@ -183,11 +170,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-<<<<<<< HEAD
 				EA92EA182EDCC74C00B8BB09 /* teeth3_dynamic.tflite in Resources */,
-=======
-				EA890E502EDCA19B008116D5 /* teeth3_dynamic.tflite in Resources */,
->>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				EA5A7A272EDCE71F00ECF31A /* teeth3_fp32.tflite in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
@@ -222,13 +205,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -274,26 +253,6 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-<<<<<<< HEAD
-=======
-		E530047FB0687A4BE6A791AE /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-BloomDent/Pods-BloomDent-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
->>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -304,7 +263,6 @@
 				EA92EA152EDCC73D00B8BB09 /* TeethClassifier.swift in Sources */,
 				EA92EA162EDCC73D00B8BB09 /* TeethClassifierBridge.m in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
-				EA890E4E2EDCA11C008116D5 /* TeethClassifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
