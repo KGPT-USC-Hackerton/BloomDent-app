@@ -20,7 +20,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle } from 'react-native-svg';
 import { detectLips } from '../services/lipDetectionService';
-import ImageManipulator from 'react-native-image-manipulator';
+
+// ✅ 안전하게 ImageManipulator import (네이티브 모듈이 없을 수 있음)
+let ImageManipulator = null;
+try {
+  ImageManipulator = require('react-native-image-manipulator').default;
+} catch (error) {
+  console.warn('⚠️ react-native-image-manipulator를 불러올 수 없습니다:', error);
+}
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -175,11 +182,14 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
   const cropLipArea = useCallback(
     async (photoPath, rawWidth, rawHeight) => {
       try {
-        if (
-          !ImageManipulator ||
-          typeof ImageManipulator.manipulate !== 'function'
-        ) {
-          console.warn('⚠️ ImageManipulator 사용 불가 - 원본 반환');
+        // ImageManipulator 모듈 체크
+        if (!ImageManipulator) {
+          console.warn('⚠️ ImageManipulator 모듈이 없습니다 - 원본 반환');
+          return photoPath;
+        }
+
+        if (typeof ImageManipulator.manipulate !== 'function') {
+          console.warn('⚠️ ImageManipulator.manipulate 함수가 없습니다 - 원본 반환');
           return photoPath;
         }
 
@@ -595,22 +605,16 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
         ? photo.path
         : `file://${photo.path}`;
 
-      const croppedPath = await cropLipArea(
-        photoPath,
-        photo.width,
-        photo.height,
-      );
-
-      const cropRatio = croppedPath !== photoPath ? 0.7 : 1.0;
+      // 수동 촬영은 크롭하지 않고 원본 이미지 사용
       const asset = {
-        uri: croppedPath,
+        uri: photoPath,
         type: 'image/jpeg',
         fileName: `dental_${position}_${Date.now()}.jpg`,
-        width: Math.round(photo.width * cropRatio),
-        height: Math.round(photo.height * cropRatio),
+        width: photo.width,
+        height: photo.height,
       };
 
-      console.log('✅ 수동 촬영 완료 (입술 영역 크롭)');
+      console.log('✅ 수동 촬영 완료 (원본 이미지)');
       onCapture(asset);
     } catch (error) {
       console.error('❌ 촬영 오류:', error);
