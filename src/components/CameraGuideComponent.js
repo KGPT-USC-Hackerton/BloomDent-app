@@ -440,8 +440,8 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'quality',
-        flash: 'off',
-        enableShutterSound: false,
+        flash: 'on',
+        enableShutterSound: true,
       });
 
       const photoPath = photo.path.startsWith('file://')
@@ -499,7 +499,7 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'speed',
-        flash: 'off',
+        flash: 'off', // 입술 검출용이므로 플래시 끄기
         enableShutterSound: false,
       });
 
@@ -587,8 +587,8 @@ export default function CameraGuideComponent({ position, onCapture, onClose }) {
 
       const photo = await camera.current.takePhoto({
         qualityPrioritization: 'speed',
-        flash: 'off',
-        enableShutterSound: false,
+        flash: 'on',
+        enableShutterSound: true,
       });
 
       const photoPath = photo.path.startsWith('file://')

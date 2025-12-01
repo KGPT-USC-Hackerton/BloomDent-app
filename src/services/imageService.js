@@ -67,6 +67,7 @@ export const uploadImage = async (file, options = {}, onProgress = null) => {
       onProgress(100);
     }
 
+    console.log('uploadImage 응답:', JSON.stringify(response, null, 2));
     return response;
   } catch (error) {
     console.error('uploadImage 상세 오류:', {
@@ -219,6 +220,111 @@ export const pollAnalysisStatus = async (imageId, options = {}) => {
             status: 408,
             message: '분석 시간이 초과되었습니다. 잠시 후 다시 확인해주세요.',
             data: statusResponse.data,
+          });
+          return;
+        }
+
+        // 계속 폴링
+        setTimeout(poll, interval);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    poll();
+  });
+};
+
+/**
+ * History ID로 분석 결과 조회 (3개 사진 세트)
+ * @param {string} historyId - History ID (UUID v4)
+ * @returns {Promise<Object>} - { success, data: { upper, lower, front } }
+ */
+export const getHistoryAnalysis = async (historyId) => {
+  try {
+    const response = await get(`/images/history/${historyId}/analysis`);
+    return response;
+  } catch (error) {
+    throw {
+      status: error.status || 500,
+      message: getErrorMessage(error.status, '분석 결과 조회'),
+      data: error.data || null,
+    };
+  }
+};
+
+/**
+ * 사용자의 모든 history_id 목록 조회
+ * @param {number} userId - 사용자 ID
+ * @returns {Promise<Object>} - { success, count, data: [...] }
+ */
+export const getUserHistories = async (userId) => {
+  try {
+    const response = await get(`/images/user/${userId}/histories`);
+    return response;
+  } catch (error) {
+    throw {
+      status: error.status || 500,
+      message: getErrorMessage(error.status, '히스토리 목록 조회'),
+      data: error.data || null,
+    };
+  }
+};
+
+/**
+ * History ID의 분석 상태 폴링 (3개 사진 세트)
+ * @param {string} historyId - History ID (UUID v4)
+ * @param {Object} options - { interval?: number, maxAttempts?: number, onStatusChange?: Function }
+ * @returns {Promise<Object>} - 분석 결과 데이터
+ */
+export const pollHistoryAnalysisStatus = async (historyId, options = {}) => {
+  const {
+    interval = 2500, // 2.5초 간격
+    maxAttempts = 60, // 최대 60회 시도 (약 2.5분)
+    onStatusChange = null,
+  } = options;
+
+  let attempts = 0;
+
+  return new Promise((resolve, reject) => {
+    const poll = async () => {
+      try {
+        attempts++;
+        
+        const response = await getHistoryAnalysis(historyId);
+        
+        // 3개 사진 모두 분석 완료되었는지 확인
+        const upper = response.data?.upper;
+        const lower = response.data?.lower;
+        const front = response.data?.front;
+        
+        const allCompleted = upper?.analysis && lower?.analysis && front?.analysis;
+        const anyFailed = [upper, lower, front].some(img => img?.analysis_status === 'failed');
+
+        if (onStatusChange) {
+          const status = allCompleted ? 'completed' : anyFailed ? 'failed' : 'processing';
+          onStatusChange(status, attempts);
+        }
+
+        if (allCompleted) {
+          resolve(response);
+          return;
+        }
+
+        if (anyFailed) {
+          reject({
+            status: 500,
+            message: '일부 이미지의 분석에 실패했습니다.',
+            data: response.data,
+          });
+          return;
+        }
+
+        if (attempts >= maxAttempts) {
+          reject({
+            status: 408,
+            message: '분석 시간이 초과되었습니다. 잠시 후 다시 확인해주세요.',
+            data: response.data,
           });
           return;
         }

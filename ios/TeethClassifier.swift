@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 //  TeethClassifier.swift
 //  BloomDent
 
@@ -5,31 +6,53 @@ import Foundation
 import UIKit
 import TensorFlowLite          // pod 'TensorFlowLiteSwift' 로 설치된 모듈
 import React                  // RCTPromiseResolveBlock, RCTPromiseRejectBlock
+=======
+// TeethClassifier.swift
+// BloomDent
+
+import Foundation
+import TensorFlowLite          // pod 'TensorFlowLiteC' / 'TensorFlowLiteSwift'
+import React                   // RCTPromiseResolveBlock, RCTPromiseRejectBlock
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 
 @objc(TeethClassifier)
 class TeethClassifier: NSObject {
 
+<<<<<<< HEAD
   // RN 모듈 이름
+=======
+  // RN에서 모듈 이름으로 사용됨
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
   @objc static func moduleName() -> String! {
     return "TeethClassifier"
   }
 
+<<<<<<< HEAD
   // 메인 큐에서 초기화할 필요 없음
+=======
+  // 메인 스레드에서 초기화 여부 (대부분 false)
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
   @objc static func requiresMainQueueSetup() -> Bool {
     return false
   }
 
+<<<<<<< HEAD
   private var interpreter: Interpreter?
   private var inputWidth: Int = 224
   private var inputHeight: Int = 224
   private var inputChannels: Int = 3
   private var inputIsFloat: Bool = true
+=======
+  // TFLite 인터프리터
+  private var interpreter: Interpreter?
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
 
   override init() {
     super.init()
     loadModel()
   }
 
+<<<<<<< HEAD
   // MARK: - 모델 로드
 
   private func loadModel() {
@@ -38,10 +61,20 @@ class TeethClassifier: NSObject {
       ofType: "tflite"
     ) else {
       print("❌ [TeethClassifier] TFLite model not found")
+=======
+  /// TFLite 모델 로드
+  private func loadModel() {
+    guard let modelPath = Bundle.main.path(
+      forResource: "teeth3_dynamic",   // 또는 "teeth3_fp32" (실제 파일 이름과 맞추기)
+      ofType: "tflite"
+    ) else {
+      print("❌ TFLite model not found")
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
       return
     }
 
     do {
+<<<<<<< HEAD
       let options = Interpreter.Options()
       interpreter = try Interpreter(modelPath: modelPath, options: options)
       try interpreter?.allocateTensors()
@@ -150,6 +183,27 @@ class TeethClassifier: NSObject {
   func infer(
     _ base64: NSString,
     resolver resolve: @escaping RCTPromiseResolveBlock,
+=======
+      interpreter = try Interpreter(modelPath: modelPath)
+      try interpreter?.allocateTensors()
+      print("✅ Model loaded successfully")
+    } catch {
+      print("❌ Failed to load model:", error)
+    }
+  }
+
+  // =====================================================
+  // JS에서 호출할 메서드
+  // Obj-C 브리지:
+  // RCT_EXTERN_METHOD(infer:(NSData *)imageData
+  //                   withResolver:(RCTPromiseResolveBlock)resolve
+  //                   rejecter:(RCTPromiseRejectBlock)reject)
+  // =====================================================
+  @objc(infer:withResolver:rejecter:)
+  func infer(
+    _ imageData: Data,
+    withResolver resolve: @escaping RCTPromiseResolveBlock,
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     guard let interpreter = interpreter else {
@@ -157,6 +211,7 @@ class TeethClassifier: NSObject {
       return
     }
 
+<<<<<<< HEAD
     // 네이티브 작업은 백그라운드 큐에서 수행
     DispatchQueue.global(qos: .userInitiated).async {
       do {
@@ -204,10 +259,37 @@ class TeethClassifier: NSObject {
         print("❌ [TeethClassifier] Inference error:", error)
         reject("inference_failed", "Failed to run inference", error)
       }
+=======
+    do {
+      // TODO: 여기서 imageData(이미지 원본)를
+      // 1) UIImage 로 디코딩
+      // 2) 224x224로 리사이즈
+      // 3) Float32 배열 (RGB 정규화) 로 변환
+      // → 그 결과를 inputTensorData 로 사용해야 합니다.
+      //
+      // 지금은 **임시로** imageData 자체가 이미 Float32 텐서라고 가정합니다.
+
+      let inputTensorData = imageData
+
+      try interpreter.copy(inputTensorData, toInputAt: 0)
+      try interpreter.invoke()
+
+      let outputTensor = try interpreter.output(at: 0)
+
+      // 예시: Float32 배열로 변환 (ex. [p_lower, p_upper, p_front])
+      let results: [Float32] = outputTensor.data.toArray(type: Float32.self)
+
+      // JS 쪽으로 그대로 배열을 반환
+      resolve(results)
+    } catch {
+      print("❌ Inference failed:", error)
+      reject("inference_failed", "Failed to run inference", error)
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
     }
   }
 }
 
+<<<<<<< HEAD
 // MARK: - Data → [T] 확장
 
 extension Data {
@@ -216,6 +298,16 @@ extension Data {
     return self.withUnsafeBytes { buffer in
       let ptr = buffer.bindMemory(to: T.self)
       return Array(ptr[0..<count])
+=======
+// MARK: - Data → [T] 변환 유틸
+extension Data {
+  /// Data를 제네릭 배열로 변환 (예: Float32.self)
+  func toArray<T>(type: T.Type) -> [T] {
+    let elementCount = self.count / MemoryLayout<T>.stride
+    return self.withUnsafeBytes { bufferPointer in
+      let ptr = bufferPointer.bindMemory(to: T.self)
+      return Array(ptr[0..<elementCount])
+>>>>>>> 2433841413de3acf37bc6eea006c8b9f322ac4fd
     }
   }
 }
