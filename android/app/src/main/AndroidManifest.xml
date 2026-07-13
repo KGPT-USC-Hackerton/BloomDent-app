@@ -18,10 +18,10 @@
       android:usesCleartextTraffic="${usesCleartextTraffic}"
       android:supportsRtl="true">
       
-      <!-- 네이버 지도 클라이언트 ID -->
+      <!-- 구글 지도 API 키 (Google Cloud Console에서 Maps SDK for Android 활성화 후 발급) -->
       <meta-data
-        android:name="com.naver.maps.map.CLIENT_ID"
-        android:value="kwwy7n0792" />
+        android:name="com.google.android.geo.API_KEY"
+        android:value="YOUR_GOOGLE_MAPS_API_KEY" />
       
       <activity
         android:name=".MainActivity"

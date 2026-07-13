@@ -28,8 +28,6 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NMFNcpKeyId</key>
-	<string>kwwy7n0792</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -38,9 +36,11 @@
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
-			<key>210.119.33.3</key>
+			<key>10.25.8.92</key>
 			<dict>
 				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
 				<true/>
 			</dict>
 		</dict>

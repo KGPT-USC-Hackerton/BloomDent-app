@@ -1,10 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Platform, PermissionsAndroid, ActivityIndicator, Linking, RefreshControl } from 'react-native';
-import { NaverMapView, NaverMapMarkerOverlay } from '@mj-studio/react-native-naver-map';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { getNearbyDentists, getUserAppointments, getAvailableDates, getAvailableSlots, getSurveyQuestions, createAppointment } from '../services/api';
 import { getUser } from '../utils/storage';
+
+// Android: 구글 지도 / iOS: 애플 지도(기본)
+const MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
+
+// 네이버의 zoom 레벨을 react-native-maps 의 region delta 로 변환
+const regionFromZoom = (latitude, longitude, zoom) => {
+  const longitudeDelta = 360 / Math.pow(2, zoom);
+  return {
+    latitude,
+    longitude,
+    latitudeDelta: longitudeDelta * 0.7,
+    longitudeDelta,
+  };
+};
 
 export default function AppointmentScreen() {
   const [selectedClinic, setSelectedClinic] = useState(null);
@@ -379,13 +393,16 @@ export default function AppointmentScreen() {
     // 지도가 렌더링된 후 해당 위치로 이동
     setTimeout(() => {
       if (mapRef.current) {
-        mapRef.current.animateCameraTo({
-          latitude: parseFloat(clinic.latitude),
-          longitude: parseFloat(clinic.longitude),
-          zoom: 17,
-          duration: 1000,
-          easing: 'EaseInOut',
-        });
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: parseFloat(clinic.latitude),
+              longitude: parseFloat(clinic.longitude),
+            },
+            zoom: 17,
+          },
+          { duration: 1000 },
+        );
       }
     }, 500);
   };
@@ -394,13 +411,16 @@ export default function AppointmentScreen() {
   const moveToMyLocation = (isFullscreen = false) => {
     const targetRef = isFullscreen ? mapRef : smallMapRef;
     if (targetRef.current && currentLocation) {
-      targetRef.current.animateCameraTo({
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        zoom: 16,
-        duration: 1000,
-        easing: 'EaseInOut',
-      });
+      targetRef.current.animateCamera(
+        {
+          center: {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+          },
+          zoom: 16,
+        },
+        { duration: 1000 },
+      );
     }
   };
 
@@ -728,50 +748,50 @@ export default function AppointmentScreen() {
           onPress={() => setShowFullscreenMap(true)}
           activeOpacity={0.8}
         >
-        <NaverMapView
+        <MapView
             ref={smallMapRef}
+            provider={MAP_PROVIDER}
             key={`map-${currentLocation.latitude}-${currentLocation.longitude}`}
             style={styles.mapContainer}
-            initialCamera={{
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude,
-              zoom: 15,
-            }}
+            initialRegion={regionFromZoom(
+              currentLocation.latitude,
+              currentLocation.longitude,
+              15,
+            )}
           >
             {/* 현재 위치 마커 */}
-            <NaverMapMarkerOverlay
-              latitude={currentLocation.latitude}
-              longitude={currentLocation.longitude}
+            <Marker
+              coordinate={{
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+              }}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
             >
               <View style={styles.currentLocationMarker}>
                 <View style={styles.currentLocationDot} />
               </View>
-            </NaverMapMarkerOverlay>
+            </Marker>
 
             {/* 치과 마커들 */}
             {clinics.map((clinic, index) => (
-              <NaverMapMarkerOverlay
+              <Marker
                 key={clinic.id}
-                latitude={parseFloat(clinic.latitude)}
-                longitude={parseFloat(clinic.longitude)}
+                coordinate={{
+                  latitude: parseFloat(clinic.latitude),
+                  longitude: parseFloat(clinic.longitude),
+                }}
                 anchor={{ x: 0.5, y: 1 }}
-                image={{ symbol: 'blue' }}
-                caption={{
-                  text: `${index + 1}. ${clinic.name}`,
-                  textSize: 12,
-                  color: '#374151',
-                  haloColor: '#ffffff',
-                }}
-                subCaption={{
-                  text: clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : '',
-                  textSize: 10,
-                  color: '#6b7280',
-                  haloColor: '#ffffff',
-                }}
-              />
+                title={`${index + 1}. ${clinic.name}`}
+                description={clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : ''}
+                tracksViewChanges={false}
+              >
+                <View style={styles.clinicMarker}>
+                  <Text style={styles.clinicMarkerText}>{index + 1}</Text>
+                </View>
+              </Marker>
             ))}
-          </NaverMapView>
+          </MapView>
           <View style={styles.mapOverlayHint}>
             <Text style={styles.mapOverlayText}>📍 지도를 탭하여 확대</Text>
           </View>
@@ -794,51 +814,51 @@ export default function AppointmentScreen() {
         onRequestClose={() => setShowFullscreenMap(false)}
       >
         <View style={styles.fullscreenMapContainer}>
-          <NaverMapView
+          <MapView
             ref={mapRef}
+            provider={MAP_PROVIDER}
             key={`fullscreen-map-${currentLocation.latitude}-${currentLocation.longitude}`}
             style={styles.fullscreenMap}
-            initialCamera={{
-              latitude: currentLocation.latitude,
-              longitude: currentLocation.longitude,
-              zoom: 15,
-            }}
+            initialRegion={regionFromZoom(
+              currentLocation.latitude,
+              currentLocation.longitude,
+              15,
+            )}
           >
             {/* 현재 위치 마커 */}
-            <NaverMapMarkerOverlay
-              latitude={currentLocation.latitude}
-              longitude={currentLocation.longitude}
+            <Marker
+              coordinate={{
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+              }}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
             >
               <View style={styles.currentLocationMarker}>
                 <View style={styles.currentLocationDot} />
               </View>
-            </NaverMapMarkerOverlay>
+            </Marker>
 
             {/* 치과 마커들 */}
             {clinics.map((clinic, index) => (
-              <NaverMapMarkerOverlay
+              <Marker
                 key={clinic.id}
-                latitude={parseFloat(clinic.latitude)}
-                longitude={parseFloat(clinic.longitude)}
+                coordinate={{
+                  latitude: parseFloat(clinic.latitude),
+                  longitude: parseFloat(clinic.longitude),
+                }}
                 anchor={{ x: 0.5, y: 1 }}
-                image={{ symbol: 'blue' }}
-                caption={{
-                  text: `${index + 1}. ${clinic.name}`,
-                  textSize: 14,
-                  color: '#374151',
-                  haloColor: '#ffffff',
-                }}
-                subCaption={{
-                  text: clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : '',
-                  textSize: 12,
-                  color: '#6b7280',
-                  haloColor: '#ffffff',
-                }}
-                onTap={() => handleMarkerTap(clinic.id)}
-              />
+                title={`${index + 1}. ${clinic.name}`}
+                description={clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : ''}
+                onPress={() => handleMarkerTap(clinic.id)}
+                tracksViewChanges={false}
+              >
+                <View style={styles.clinicMarker}>
+                  <Text style={styles.clinicMarkerText}>{index + 1}</Text>
+                </View>
+              </Marker>
             ))}
-          </NaverMapView>
+          </MapView>
           <TouchableOpacity
             style={styles.closeMapButton}
             onPress={() => setShowFullscreenMap(false)}
@@ -1346,6 +1366,26 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  clinicMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 4,
+  },
+  clinicMarkerText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   currentLocationDot: {
     width: 16,
