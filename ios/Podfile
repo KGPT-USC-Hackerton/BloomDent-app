@@ -41,5 +41,20 @@ target 'BloomDent' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # fmt 11.0.2 + Xcode 26 / clang 21 에서 consteval 컴파일 에러 회피
+    # ("Call to consteval function basic_format_string is not a constant expression")
+    # base.h 가 FMT_USE_CONSTEVAL 를 가드 없이 무조건 재정의하므로 -D 로는 못 막는다.
+    # 헤더의 consteval 감지 결과를 강제로 0(off)으로 패치한다.
+    fmt_base_h = File.join(installer.sandbox.root, 'fmt', 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base_h)
+      contents = File.read(fmt_base_h)
+      patched = contents.gsub(/#  define FMT_USE_CONSTEVAL 1/, '#  define FMT_USE_CONSTEVAL 0')
+      if patched != contents
+        File.chmod(0644, fmt_base_h)
+        File.write(fmt_base_h, patched)
+        Pod::UI.puts "[fmt patch] FMT_USE_CONSTEVAL forced to 0 in base.h".green
+      end
+    end
   end
 end
