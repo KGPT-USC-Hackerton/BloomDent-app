@@ -55,6 +55,8 @@ export const detectLips = async (imageUri) => {
       signal: controller.signal,
       headers: {
         // FormData 사용 시 Content-Type은 자동으로 설정됨
+        // ngrok 무료 플랜 브라우저 경고 페이지 우회 (직접 IP 접속 시엔 무시됨)
+        'ngrok-skip-browser-warning': 'true',
       },
     });
 

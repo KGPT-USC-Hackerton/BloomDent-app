@@ -9,6 +9,8 @@ export const apiRequest = async (endpoint, options = {}) => {
   
   const defaultHeaders = {
     'Content-Type': 'application/json',
+    // ngrok 무료 플랜 브라우저 경고 페이지 우회 (직접 IP 접속 시엔 무시됨)
+    'ngrok-skip-browser-warning': 'true',
   };
 
   // 토큰이 있으면 헤더에 추가 (나중에 JWT 토큰 사용 시)
