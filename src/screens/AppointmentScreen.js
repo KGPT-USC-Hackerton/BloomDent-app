@@ -141,6 +141,22 @@ export default function AppointmentScreen() {
     }
   };
 
+  // 치과 목록이 로드되면 작은 지도를 마커들 범위에 맞춰 이동/줌한다.
+  // (현위치가 아직 기본값이어도 실제 치과 위치가 화면에 보이도록)
+  useEffect(() => {
+    const coords = clinics
+      .map(c => ({ latitude: parseFloat(c.latitude), longitude: parseFloat(c.longitude) }))
+      .filter(c => !isNaN(c.latitude) && !isNaN(c.longitude));
+    if (coords.length === 0 || !smallMapRef.current) return;
+    const t = setTimeout(() => {
+      smallMapRef.current?.fitToCoordinates(coords, {
+        edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+        animated: true,
+      });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [clinics]);
+
   // 전체 치과 목록 조회 (페이지네이션)
   // pageToLoad: 불러올 페이지, append: true면 기존 목록에 이어붙임, isRefresh: 당겨서 새로고침
   const fetchClinics = async (pageToLoad = 1, { append = false, isRefresh = false } = {}) => {
@@ -384,16 +400,17 @@ export default function AppointmentScreen() {
   const handleClinicCardTap = (clinic) => {
     // 풀스크린 모달 열기
     setShowFullscreenMap(true);
-    
+
+    const lat = parseFloat(clinic.latitude);
+    const lng = parseFloat(clinic.longitude);
+    if (isNaN(lat) || isNaN(lng)) return;
+
     // 지도가 렌더링된 후 해당 위치로 이동
     setTimeout(() => {
       if (mapRef.current) {
         mapRef.current.animateCamera(
           {
-            center: {
-              latitude: parseFloat(clinic.latitude),
-              longitude: parseFloat(clinic.longitude),
-            },
+            center: { latitude: lat, longitude: lng },
             zoom: 17,
           },
           { duration: 1000 },
@@ -769,23 +786,20 @@ export default function AppointmentScreen() {
             </Marker>
 
             {/* 치과 마커들 */}
-            {clinics.map((clinic, index) => (
+            {clinics.map((clinic, index) => {
+              const lat = parseFloat(clinic.latitude);
+              const lng = parseFloat(clinic.longitude);
+              if (isNaN(lat) || isNaN(lng)) return null;
+              return (
               <Marker
                 key={clinic.id}
-                coordinate={{
-                  latitude: parseFloat(clinic.latitude),
-                  longitude: parseFloat(clinic.longitude),
-                }}
-                anchor={{ x: 0.5, y: 1 }}
+                coordinate={{ latitude: lat, longitude: lng }}
                 title={`${index + 1}. ${clinic.name}`}
                 description={clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : ''}
-                tracksViewChanges={false}
-              >
-                <View style={styles.clinicMarker}>
-                  <Text style={styles.clinicMarkerText}>{index + 1}</Text>
-                </View>
-              </Marker>
-            ))}
+                pinColor={clinic.is_partner === 1 ? '#2563eb' : '#ef4444'}
+              />
+              );
+            })}
           </MapView>
           <View style={styles.mapOverlayHint}>
             <Text style={styles.mapOverlayText}>📍 지도를 탭하여 확대</Text>
@@ -835,24 +849,21 @@ export default function AppointmentScreen() {
             </Marker>
 
             {/* 치과 마커들 */}
-            {clinics.map((clinic, index) => (
+            {clinics.map((clinic, index) => {
+              const lat = parseFloat(clinic.latitude);
+              const lng = parseFloat(clinic.longitude);
+              if (isNaN(lat) || isNaN(lng)) return null;
+              return (
               <Marker
                 key={clinic.id}
-                coordinate={{
-                  latitude: parseFloat(clinic.latitude),
-                  longitude: parseFloat(clinic.longitude),
-                }}
-                anchor={{ x: 0.5, y: 1 }}
+                coordinate={{ latitude: lat, longitude: lng }}
                 title={`${index + 1}. ${clinic.name}`}
                 description={clinic.distance ? `${parseFloat(clinic.distance).toFixed(2)}km` : ''}
+                pinColor={clinic.is_partner === 1 ? '#2563eb' : '#ef4444'}
                 onPress={() => handleMarkerTap(clinic.id)}
-                tracksViewChanges={false}
-              >
-                <View style={styles.clinicMarker}>
-                  <Text style={styles.clinicMarkerText}>{index + 1}</Text>
-                </View>
-              </Marker>
-            ))}
+              />
+              );
+            })}
           </MapView>
           <TouchableOpacity
             style={styles.closeMapButton}
