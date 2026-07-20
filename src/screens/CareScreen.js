@@ -27,10 +27,17 @@ const tabs = [
 const FALLBACK_BACKEND_BASE_URL = (Config.API_BASE_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
 
 export default function CareScreen({ route }) {
-  const [activeTab, setActiveTab] = useState('survey');
+  // 통합 위저드 단계: intro → survey → photo → result
+  const [step, setStep] = useState('intro');
   const [userId, setUserId] = useState(null);
-  const [isSurveyStarted, setIsSurveyStarted] = useState(false);
   const [isPhotoSession, setIsPhotoSession] = useState(false);
+
+  // 통합 분석용 세션/결과 상태
+  const [surveySessionId, setSurveySessionId] = useState(null);
+  const [photoHistoryId, setPhotoHistoryId] = useState(null);
+  const [combinedResult, setCombinedResult] = useState(null);
+  const [combinedLoading, setCombinedLoading] = useState(false);
+  const [combinedError, setCombinedError] = useState(null);
 
   // score_history 기반 기록
   const [records, setRecords] = useState([]);
@@ -62,15 +69,12 @@ export default function CareScreen({ route }) {
     })();
   }, []);
 
-  // 탭 변경 시 설문 / 사진 촬영 세션 모두 초기화
+  // 사진 단계를 벗어나면 촬영 세션 종료 상태로
   useEffect(() => {
-    if (activeTab !== 'survey') {
-      setIsSurveyStarted(false);
+    if (step !== 'photo') {
+      setIsPhotoSession(false);
     }
-    if (activeTab !== 'photo') {
-      setIsPhotoSession(false); // 🔥 다른 탭 갔다 오면 촬영 세션 종료 상태로
-    }
-  }, [activeTab]);
+  }, [step]);
 
   // ✅ score_history 불러오기 (userId, reloadKey가 바뀔 때마다)
   useEffect(() => {
@@ -142,223 +146,346 @@ export default function CareScreen({ route }) {
    * - 1) 기본 점수 Alert
    * - 2) 백엔드에 분석/추천 요청 (Gemini)
    */
-  const handleSurveySubmit = async result => {
-    if (!result || !userId) return;
-    setIsProcessingSurvey(true);
+  // [1단계] 설문 완료 → session_id 확보 후 [2단계] 촬영으로 진행
+  //   (개별 설문분석/추천 호출은 제거. 촬영까지 끝난 뒤 통합 분석 1회 수행)
+  const handleSurveySubmit = result => {
+    if (!result) return;
+
+    const sessionId =
+      result?.session_id ||
+      result?.sessionId ||
+      result?.scores?.survey_session_id ||
+      result?.scores?.session_id ||
+      null;
+
+    console.log('🔍 설문 완료, session_id =', sessionId);
+    setSurveySessionId(sessionId);
+    setStep('photo');
+  };
+
+  // [2단계] 사진 3장 분석 완료 → history_id 확보 후 [3단계] 통합 분석으로 진행
+  const handlePhotoComplete = historyId => {
+    console.log('🔍 사진 분석 완료, history_id =', historyId);
+    setPhotoHistoryId(historyId);
+    setStep('result');
+  };
+
+  // [3단계] 설문 + 사진을 합쳐 통합 분석 1회 호출
+  const runCombinedAnalysis = async () => {
+    if (!userId || !surveySessionId || !photoHistoryId) {
+      setCombinedError('설문 또는 사진 정보가 부족합니다.');
+      return;
+    }
+    setCombinedLoading(true);
+    setCombinedError(null);
+    setCombinedResult(null);
 
     try {
-      const overallScoreRaw =
-        result?.overall?.normalizedScore ??
-        result?.normalizedScore ??
-        result?.scores?.total_score ??
-        0;
-      const score = Math.max(0, Math.min(100, overallScoreRaw));
-
-      const surveySessionId =
-        result?.session_id ||
-        result?.sessionId ||
-        result?.scores?.survey_session_id ||
-        result?.scores?.session_id ||
-        null;
-
-      console.log('🔍 survey result from SurveyComponent:', result);
-      console.log(
-        '🔍 userId:',
-        userId,
-        'surveySessionId:',
-        surveySessionId,
-        'score:',
-        score,
-      );
-
-      // 2) 설문 분석 요청
-      const analysisRes = await fetch(
-        `${BACKEND_BASE_URL}/api/ai/survey-analysis`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user_id: userId,
-            survey_session_id: surveySessionId,
-            score,
-            raw_result: result, // 백엔드에서 필요하면 쓰도록 전체를 같이 보냄
-          }),
-        },
-      );
-
-      const analysisJson = await analysisRes.json();
-      console.log('🔍 analysisJson:', analysisJson);
-
-      if (!analysisRes.ok || !analysisJson.success) {
-        throw new Error(
-          analysisJson.message ||
-            `분석 API 에러 (status ${analysisRes.status})`,
-        );
-      }
-
-      // 3) 추천 요청
-      const recRes = await fetch(`${BACKEND_BASE_URL}/api/ai/recommendations`, {
+      const res = await fetch(`${BACKEND_BASE_URL}/api/ai/combined-analysis`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: userId,
           survey_session_id: surveySessionId,
-          score,
-          raw_result: result,
+          history_id: photoHistoryId,
         }),
       });
+      const json = await res.json();
 
-      const recJson = await recRes.json();
-      console.log('🔍 recJson:', recJson);
-
-      if (!recRes.ok || !recJson.success) {
+      if (!res.ok || !json.success) {
         throw new Error(
-          recJson.message || `추천 API 에러 (status ${recRes.status})`,
+          json.message || `통합 분석 API 에러 (status ${res.status})`,
         );
       }
-      setReloadKey(prev => prev + 1); // 기록 다시 불러오기 트리거
-      Alert.alert(
-        // 완료 안내
-        '설문 완료',
-        '설문 결과 분석과 맞춤형 구강 용품 추천이 완료되었습니다.',
-      );
+
+      setCombinedResult(json.analysis);
+      setReloadKey(prev => prev + 1); // 기록 갱신
     } catch (error) {
-      console.error('설문 분석/추천 처리 오류:', error);
-      Alert.alert(
-        '분석 오류',
-        error.message ||
-          '설문 분석 또는 추천을 생성하는 중 문제가 발생했습니다.',
+      console.error('통합 분석 오류:', error);
+      setCombinedError(
+        error.message || '통합 분석 중 문제가 발생했습니다.',
       );
     } finally {
-      setIsProcessingSurvey(false);
-      setIsSurveyStarted(false);
+      setCombinedLoading(false);
     }
   };
 
+  // result 단계 진입 시 자동으로 통합 분석 실행
+  useEffect(() => {
+    if (step === 'result' && surveySessionId && photoHistoryId) {
+      runCombinedAnalysis();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, surveySessionId, photoHistoryId]);
+
+  // 처음부터 다시 시작
+  const restartFlow = () => {
+    setSurveySessionId(null);
+    setPhotoHistoryId(null);
+    setCombinedResult(null);
+    setCombinedError(null);
+    setCombinedLoading(false);
+    setStep('intro');
+  };
+
+  const stepIndex = { intro: 0, survey: 0, photo: 1, result: 2 }[step] ?? 0;
+
   return (
     <View style={styles.container}>
-      {/* 탭 바 */}
-      <View style={styles.tabBar}>
-        {tabs.map(tab => (
-          <View key={tab.id} style={styles.tabItem}>
-            <TouchableOpacity
-              style={[
-                styles.tabButton,
-                activeTab === tab.id && styles.tabButtonActive,
-              ]}
-              onPress={() => setActiveTab(tab.id)}
-            >
+      {/* 진행 단계 표시 */}
+      <View style={styles.stepper}>
+        {WIZARD_STEPS.map((s, i) => (
+          <React.Fragment key={s.key}>
+            <View style={styles.stepItem}>
+              <View
+                style={[styles.stepDot, i <= stepIndex && styles.stepDotActive]}
+              >
+                <Text
+                  style={[
+                    styles.stepDotText,
+                    i <= stepIndex && styles.stepDotTextActive,
+                  ]}
+                >
+                  {i + 1}
+                </Text>
+              </View>
               <Text
                 style={[
-                  styles.tabButtonText,
-                  activeTab === tab.id && styles.tabButtonTextActive,
+                  styles.stepLabel,
+                  i === stepIndex && styles.stepLabelActive,
                 ]}
               >
-                {tab.label}
+                {s.label}
               </Text>
-            </TouchableOpacity>
-          </View>
+            </View>
+            {i < WIZARD_STEPS.length - 1 && (
+              <View
+                style={[
+                  styles.stepLine,
+                  i < stepIndex && styles.stepLineActive,
+                ]}
+              />
+            )}
+          </React.Fragment>
         ))}
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {/* 설문 탭 */}
-        {activeTab === 'survey' && (
+        {/* intro: 시작 안내 + 이전 기록 */}
+        {step === 'intro' && (
           <View style={styles.section}>
-            {/* 1) 설문 시작 카드 or 설문 컴포넌트 */}
-            {!isSurveyStarted ? (
-              <View style={styles.card}>
-                <View style={styles.cardIconCircle}>
-                  <Text style={styles.cardIconText}>📝</Text>
+            <View style={styles.card}>
+              <View style={styles.cardIconCircle}>
+                <Text style={styles.cardIconText}>🦷</Text>
+              </View>
+              <Text style={styles.cardTitle}>
+                구강 건강 통합 분석을 시작해보세요
+              </Text>
+              <Text style={styles.cardSubtitle}>
+                ① 설문조사와 ② 구강 사진 촬영을 마치면, 두 결과를 종합한 맞춤형
+                분석과 관리 추천을 한 번에 받아볼 수 있어요.
+              </Text>
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => setStep('survey')}
+              >
+                <Text style={styles.primaryButtonText}>시작하기</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 이전 기록 */}
+            <View style={styles.historySection}>
+              {recordsLoading && (
+                <View style={styles.historyLoading}>
+                  <ActivityIndicator size="small" color="#2563eb" />
+                  <Text style={styles.historyLoadingText}>불러오는 중...</Text>
                 </View>
-                <Text style={styles.cardTitle}>
-                  구강 건강 설문을 시작해보세요
+              )}
+              {!recordsLoading && recordsError && (
+                <Text style={styles.historyErrorText}>
+                  기록을 불러오는 중 오류가 발생했습니다.
                 </Text>
-                <Text style={styles.cardSubtitle}>
-                  5~10분 정도 소요되며, 설문 결과를 바탕으로 맞춤형 구강 관리
-                  팁과 추천 구강 용품을 제공해드려요.
+              )}
+              {!recordsLoading && !recordsError && records.length === 0 && (
+                <Text style={styles.historyEmptyText}>
+                  아직 기록이 없어요. 설문과 촬영을 완료하면 이곳에 기록이 쌓여요.
                 </Text>
-
-                <TouchableOpacity
-                  style={styles.primaryButton}
-                  onPress={() => setIsSurveyStarted(true)}
-                  disabled={isProcessingSurvey}
-                >
-                  <Text style={styles.primaryButtonText}>설문 시작하기</Text>
-                </TouchableOpacity>
-
-                {isProcessingSurvey && (
-                  <View style={styles.processingBox}>
-                    <ActivityIndicator size="small" color="#2563eb" />
-                    <Text style={styles.processingText}>
-                      설문 결과를 분석 중입니다...
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ) : (
-              <SurveyComponent
-                backendBaseUrl={BACKEND_BASE_URL}
-                userId={userId}
-                onSubmit={handleSurveySubmit}
-                isProcessing={isProcessingSurvey}
-              />
-            )}
-
-            {/* ✅ 설문을 시작하지 않았을 때만 기록 섹션 보이기 */}
-            {!isSurveyStarted && (
-              <View className="historySection" style={styles.historySection}>
-                {recordsLoading && (
-                  <View style={styles.historyLoading}>
-                    <ActivityIndicator size="small" color="#2563eb" />
-                    <Text style={styles.historyLoadingText}>
-                      불러오는 중...
-                    </Text>
-                  </View>
-                )}
-
-                {!recordsLoading && recordsError && (
-                  <Text style={styles.historyErrorText}>
-                    기록을 불러오는 중 오류가 발생했습니다.
-                  </Text>
-                )}
-
-                {!recordsLoading && !recordsError && records.length === 0 && (
-                  <Text style={styles.historyEmptyText}>
-                    아직 설문 기반 기록이 없어요. 설문을 완료하면 이곳에 기록이
-                    쌓여요.
-                  </Text>
-                )}
-
-                {!recordsLoading && !recordsError && records.length > 0 && (
-                  <OralCareRecordComponent
-                    records={records}
-                    backendBaseUrl={BACKEND_BASE_URL}
-                  />
-                )}
-              </View>
-            )}
+              )}
+              {!recordsLoading && !recordsError && records.length > 0 && (
+                <OralCareRecordComponent
+                  records={records}
+                  backendBaseUrl={BACKEND_BASE_URL}
+                />
+              )}
+            </View>
           </View>
         )}
 
-        {/* 구강 사진 분석 탭 */}
-        {activeTab === 'photo' && (
+        {/* 1단계: 설문 */}
+        {step === 'survey' && (
           <View style={styles.section}>
-            {/* 📷 1) 사진 촬영 + 분석 UI */}
+            <SurveyComponent
+              backendBaseUrl={BACKEND_BASE_URL}
+              userId={userId}
+              onSubmit={handleSurveySubmit}
+              isProcessing={false}
+            />
+          </View>
+        )}
+
+        {/* 2단계: 구강 촬영 */}
+        {step === 'photo' && (
+          <View style={styles.section}>
+            <View style={styles.stepHintBox}>
+              <Text style={styles.stepHintText}>
+                설문이 완료되었어요. 이제 윗니·아랫니·앞니 3장을 촬영해 주세요.
+              </Text>
+            </View>
             <PhotoAnalysisComponent
               backendBaseUrl={BACKEND_BASE_URL}
               onSessionStateChange={setIsPhotoSession}
+              onAnalysisComplete={handlePhotoComplete}
             />
+          </View>
+        )}
 
-            {/* 📘 2) 최근 구강 사진 분석 기록 리스트 (촬영 중일 땐 숨김) */}
-            {!isPhotoSession && (
-              <View style={styles.photoHistorySection}>
-                <PhotoAnalysisHistoryList />
+        {/* 3단계: 통합 분석 결과 */}
+        {step === 'result' && (
+          <View style={styles.section}>
+            {combinedLoading && (
+              <View style={styles.card}>
+                <ActivityIndicator size="large" color="#2563eb" />
+                <Text style={styles.processingText}>
+                  설문과 사진을 종합 분석 중입니다...
+                </Text>
               </View>
+            )}
+
+            {!combinedLoading && combinedError && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>분석에 실패했어요</Text>
+                <Text style={styles.cardSubtitle}>{combinedError}</Text>
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={runCombinedAnalysis}
+                >
+                  <Text style={styles.primaryButtonText}>다시 시도</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={restartFlow}
+                >
+                  <Text style={styles.secondaryButtonText}>처음부터 다시</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!combinedLoading && !combinedError && combinedResult && (
+              <CombinedResultView
+                result={combinedResult}
+                onRestart={restartFlow}
+              />
             )}
           </View>
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+// 상단 진행 단계 정의
+const WIZARD_STEPS = [
+  { key: 'survey', label: '설문' },
+  { key: 'photo', label: '구강 촬영' },
+  { key: 'result', label: '통합 분석' },
+];
+
+// 통합 분석 결과 렌더링
+function CombinedResultView({ result, onRestart }) {
+  const {
+    summary = '',
+    details = '',
+    risk_factors = [],
+    improvements = [],
+    recommendations = [],
+    photo = {},
+  } = result || {};
+
+  const Section = ({ title, children }) => (
+    <View style={styles.resultCard}>
+      <Text style={styles.resultCardTitle}>{title}</Text>
+      {children}
+    </View>
+  );
+
+  const BulletList = ({ items }) =>
+    (items || []).length === 0 ? (
+      <Text style={styles.resultText}>해당 사항 없음</Text>
+    ) : (
+      items.map((it, idx) => (
+        <View key={idx} style={styles.bulletRow}>
+          <Text style={styles.bulletDot}>•</Text>
+          <Text style={styles.bulletText}>{it}</Text>
+        </View>
+      ))
+    );
+
+  const photoParts = [
+    ['윗니', photo.upper],
+    ['아랫니', photo.lower],
+    ['앞니', photo.front],
+  ].filter(([, v]) => v);
+
+  return (
+    <View>
+      <View style={styles.resultHeader}>
+        <Text style={styles.resultHeaderIcon}>🩺</Text>
+        <Text style={styles.resultHeaderTitle}>통합 분석 결과</Text>
+      </View>
+
+      {!!summary && (
+        <Section title="종합 총평">
+          <Text style={styles.resultText}>{summary}</Text>
+        </Section>
+      )}
+
+      {!!details && (
+        <Section title="세부 분석">
+          <Text style={styles.resultText}>{details}</Text>
+        </Section>
+      )}
+
+      <Section title="⚠️ 위험 요인">
+        <BulletList items={risk_factors} />
+      </Section>
+
+      <Section title="✅ 개선하면 좋은 습관">
+        <BulletList items={improvements} />
+      </Section>
+
+      <Section title="🪥 맞춤 추천">
+        <BulletList items={recommendations} />
+      </Section>
+
+      {(photoParts.length > 0 || photo.overall) && (
+        <Section title="📷 사진 분석 요약">
+          {photoParts.map(([label, text]) => (
+            <View key={label} style={{ marginBottom: 8 }}>
+              <Text style={styles.resultSubLabel}>{label}</Text>
+              <Text style={styles.resultText}>{text}</Text>
+            </View>
+          ))}
+          {!!photo.overall && (
+            <Text style={[styles.resultText, { marginTop: 4 }]}>
+              {photo.overall}
+            </Text>
+          )}
+        </Section>
+      )}
+
+      <TouchableOpacity style={styles.primaryButton} onPress={onRestart}>
+        <Text style={styles.primaryButtonText}>처음부터 다시 하기</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -373,6 +500,137 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 24,
+  },
+  // 스텝퍼
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'white',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  stepItem: {
+    alignItems: 'center',
+    width: 72,
+  },
+  stepDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  stepDotActive: {
+    backgroundColor: '#2563eb',
+  },
+  stepDotText: {
+    color: '#9ca3af',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  stepDotTextActive: {
+    color: 'white',
+  },
+  stepLabel: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  stepLabelActive: {
+    color: '#1d4ed8',
+    fontWeight: '700',
+  },
+  stepLine: {
+    height: 2,
+    width: 24,
+    backgroundColor: '#e5e7eb',
+    marginBottom: 18,
+  },
+  stepLineActive: {
+    backgroundColor: '#2563eb',
+  },
+  stepHintBox: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  stepHintText: {
+    color: '#1d4ed8',
+    fontSize: 13,
+  },
+  // 보조 버튼
+  secondaryButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+  },
+  secondaryButtonText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  // 통합 결과
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  resultHeaderIcon: {
+    fontSize: 22,
+    marginRight: 8,
+  },
+  resultHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  resultCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+    marginBottom: 12,
+  },
+  resultCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  resultText: {
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 21,
+  },
+  resultSubLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563eb',
+    marginBottom: 2,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    marginBottom: 6,
+  },
+  bulletDot: {
+    color: '#2563eb',
+    marginRight: 8,
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#374151',
+    lineHeight: 21,
   },
   tabBar: {
     flexDirection: 'row',

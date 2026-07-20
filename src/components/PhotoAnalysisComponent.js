@@ -36,6 +36,7 @@ const POSITION_LABELS = {
 export default function PhotoAnalysisComponent({
   onReset,
   onSessionStateChange, // 🔹 부모에게 "촬영 세션 중인지" 알려주는 콜백
+  onAnalysisComplete, // 🔹 3장 분석 완료 시 history_id 를 부모에 전달 (통합 플로우용)
 }) {
   // 3장의 이미지 정보 배열
   const [images, setImages] = useState([]);
@@ -307,6 +308,12 @@ export default function PhotoAnalysisComponent({
       setIsAnalyzing(false);
       setUploadProgress(100);
 
+      // 통합 플로우: 부모가 콜백을 주면 history_id 를 넘기고 다음 단계로 진행.
+      if (onAnalysisComplete) {
+        onAnalysisComplete(targetHistoryId);
+        return;
+      }
+
       Alert.alert('분석 완료', '3장의 구강 사진 분석이 모두 완료되었습니다.', [
         {
           text: '확인',
@@ -332,7 +339,7 @@ export default function PhotoAnalysisComponent({
       setPickerError(errorMessage);
       Alert.alert('오류', errorMessage);
     }
-  }, [allImagesReady, images, historyId, resetState]);
+  }, [allImagesReady, images, historyId, resetState, onAnalysisComplete]);
 
   /**
    * (fallback) 업로드된 개별 이미지들 분석
