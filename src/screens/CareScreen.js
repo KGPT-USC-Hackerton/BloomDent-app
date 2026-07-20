@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Config from 'react-native-config';
 
 import SurveyComponent from '../components/SurveyComponent';
 import PhotoAnalysisComponent from '../components/PhotoAnalysisComponent';
@@ -21,7 +22,9 @@ const tabs = [
   { id: 'photo', label: '구강 사진 분석' },
 ];
 
-const FALLBACK_BACKEND_BASE_URL = 'http://210.119.33.3:3000';
+// 앱 나머지와 동일하게 Config(.env)의 API_BASE_URL 기준으로 백엔드 origin 도출.
+// SurveyComponent 등은 `${BACKEND_BASE_URL}/api/...` 형태로 쓰므로 끝의 '/api'는 제거한다.
+const FALLBACK_BACKEND_BASE_URL = (Config.API_BASE_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
 
 export default function CareScreen({ route }) {
   const [activeTab, setActiveTab] = useState('survey');
