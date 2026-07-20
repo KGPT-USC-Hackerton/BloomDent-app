@@ -3,7 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pla
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { getNearbyDentists, getUserAppointments, getAvailableDates, getAvailableSlots, getSurveyQuestions, createAppointment } from '../services/api';
+import { getNearbyDentists, getClinics, getUserAppointments, getAvailableDates, getAvailableSlots, getSurveyQuestions, createAppointment } from '../services/api';
+
+// 치과 목록 페이지당 개수
+const CLINIC_PAGE_SIZE = 20;
 import { getUser } from '../utils/storage';
 
 // Android: 구글 지도 / iOS: 애플 지도(기본)
@@ -45,6 +48,11 @@ export default function AppointmentScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  // 페이지네이션 상태
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(true);
   const [appointmentsError, setAppointmentsError] = useState(null);
@@ -84,31 +92,24 @@ export default function AppointmentScreen() {
     };
 
     const getCurrentLocation = () => {
+      // 위치는 지도 중심/현재위치 마커 표시용으로만 사용한다.
+      // 치과 목록은 위치와 무관하게 전체 조회(페이지네이션)로 불러온다.
       Geolocation.getCurrentPosition(
         (position) => {
-          const newLocation = {
+          setCurrentLocation({
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
-          };
-          setCurrentLocation(newLocation);
-          // 위치를 가져온 후 주변 치과 검색
-          fetchNearbyDentists(newLocation.latitude, newLocation.longitude);
+          });
         },
         (error) => {
           console.log('위치 가져오기 실패:', error);
-          Alert.alert(
-            '위치 정보',
-            '현재 위치를 가져올 수 없습니다. 기본 위치(서울)를 표시합니다.',
-            [{ text: '확인' }]
-          );
-          // 기본 위치로 치과 검색
-          fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude);
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
       );
     };
 
     requestLocationPermission();
+    fetchClinics(1);
     fetchAppointments();
   }, []);
 
@@ -140,58 +141,52 @@ export default function AppointmentScreen() {
     }
   };
 
-  // 주변 치과 검색 API 호출
-  const fetchNearbyDentists = async (latitude, longitude, radius = 5, isRefresh = false) => {
+  // 전체 치과 목록 조회 (페이지네이션)
+  // pageToLoad: 불러올 페이지, append: true면 기존 목록에 이어붙임, isRefresh: 당겨서 새로고침
+  const fetchClinics = async (pageToLoad = 1, { append = false, isRefresh = false } = {}) => {
     try {
       if (isRefresh) {
         setRefreshing(true);
+      } else if (append) {
+        setLoadingMore(true);
       } else {
         setLoading(true);
       }
       setError(null);
-      const response = await getNearbyDentists(latitude, longitude, radius);
-      
+
+      const response = await getClinics(pageToLoad, CLINIC_PAGE_SIZE);
+
       if (response.success) {
-        setClinics(response.data);
+        setClinics(prev => (append ? [...prev, ...response.data] : response.data));
+        const pg = response.pagination || {};
+        setPage(pageToLoad);
+        setHasMore(!!pg.hasMore);
+        setTotal(pg.total ?? response.data.length);
       } else {
         setError('치과 정보를 가져오는데 실패했습니다.');
       }
     } catch (err) {
-      console.error('치과 검색 오류:', err);
+      console.error('치과 목록 조회 오류:', err);
       setError(err.message || '치과 정보를 가져오는데 실패했습니다.');
-      if (!isRefresh) {
+      if (!append && !isRefresh) {
         Alert.alert('오류', '치과 정보를 가져오는데 실패했습니다. 다시 시도해주세요.');
       }
     } finally {
-      if (isRefresh) {
-        setRefreshing(false);
-      } else {
-        setLoading(false);
-      }
+      setRefreshing(false);
+      setLoadingMore(false);
+      setLoading(false);
     }
   };
 
-  // 새로고침 핸들러
-  const onRefresh = async () => {
-    // 현재 위치를 다시 가져와서 새로고침
-    try {
-      Geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setCurrentLocation({ latitude, longitude });
-          fetchNearbyDentists(latitude, longitude, 5, true);
-        },
-        (error) => {
-          console.error('위치 가져오기 오류:', error);
-          // 위치를 가져오지 못해도 기존 위치로 새로고침
-          fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude, 5, true);
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
-    } catch (err) {
-      console.error('새로고침 오류:', err);
-      fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude, 5, true);
-    }
+  // 더보기 (다음 페이지 이어붙이기)
+  const loadMoreClinics = () => {
+    if (loadingMore || !hasMore) return;
+    fetchClinics(page + 1, { append: true });
+  };
+
+  // 새로고침 핸들러 - 첫 페이지부터 다시 로드
+  const onRefresh = () => {
+    fetchClinics(1, { isRefresh: true });
   };
 
   // 예약하기 버튼 클릭
@@ -876,21 +871,21 @@ export default function AppointmentScreen() {
 
       {/* 치과 리스트 */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>주변 치과 ({clinics.length})</Text>
+        <Text style={styles.sectionTitle}>전체 치과 ({total})</Text>
         <View style={styles.divider} />
-        
+
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#3b82f6" />
-            <Text style={styles.loadingText}>주변 치과를 검색하는 중...</Text>
+            <Text style={styles.loadingText}>치과 목록을 불러오는 중...</Text>
           </View>
         ) : error ? (
           <View style={styles.errorContainer}>
             <Icon name="error" size={48} color="#ef4444" />
             <Text style={styles.errorMessage}>{error}</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.retryButton}
-              onPress={() => fetchNearbyDentists(currentLocation.latitude, currentLocation.longitude)}
+              onPress={() => fetchClinics(1)}
             >
               <Text style={styles.retryButtonText}>다시 시도</Text>
             </TouchableOpacity>
@@ -898,7 +893,7 @@ export default function AppointmentScreen() {
         ) : clinics.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Icon name="sentiment-dissatisfied" size={48} color="#9ca3af" />
-            <Text style={styles.emptyMessage}>주변에 치과가 없습니다.</Text>
+            <Text style={styles.emptyMessage}>등록된 치과가 없습니다.</Text>
           </View>
         ) : (
         <View style={styles.clinicList}>
@@ -981,6 +976,24 @@ export default function AppointmentScreen() {
               </View>
             </View>
           ))}
+
+          {/* 더보기 버튼 (다음 페이지가 있을 때만) */}
+          {hasMore && (
+            <TouchableOpacity
+              style={styles.loadMoreButton}
+              onPress={loadMoreClinics}
+              disabled={loadingMore}
+              activeOpacity={0.7}
+            >
+              {loadingMore ? (
+                <ActivityIndicator size="small" color="#3b82f6" />
+              ) : (
+                <Text style={styles.loadMoreButtonText}>
+                  더보기 ({clinics.length}/{total})
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
         )}
       </View>
@@ -1502,6 +1515,22 @@ const styles = StyleSheet.create({
   },
   clinicList: {
     gap: 16,
+  },
+  loadMoreButton: {
+    marginTop: 4,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  loadMoreButtonText: {
+    color: '#3b82f6',
+    fontSize: 15,
+    fontWeight: '600',
   },
   clinicCard: {
     backgroundColor: 'white',

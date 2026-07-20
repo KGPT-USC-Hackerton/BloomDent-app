@@ -193,6 +193,17 @@ export const getNearbyDentists = async (latitude, longitude, radius = 5) => {
   }
 };
 
+// 전체 치과 목록 (페이지네이션)
+export const getClinics = async (page = 1, limit = 20) => {
+  try {
+    const response = await get(`/clinics?page=${page}&limit=${limit}`);
+    return response;
+  } catch (error) {
+    console.error('치과 목록 조회 실패:', error);
+    throw error;
+  }
+};
+
 // 사용자의 예약 목록 조회
 export const getUserAppointments = async (userId, status = null) => {
   try {
