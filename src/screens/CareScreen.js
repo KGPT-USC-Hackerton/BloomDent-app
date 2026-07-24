@@ -8,6 +8,7 @@ import {
   Alert,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Config from 'react-native-config';
@@ -36,6 +37,7 @@ export default function CareScreen({ route, navigation }) {
   const [surveySessionId, setSurveySessionId] = useState(null);
   const [photoHistoryId, setPhotoHistoryId] = useState(null);
   const [combinedResult, setCombinedResult] = useState(null);
+  const [combinedImages, setCombinedImages] = useState([]); // 분석 사진 URL 목록
   const [combinedLoading, setCombinedLoading] = useState(false);
   const [combinedError, setCombinedError] = useState(null);
 
@@ -179,6 +181,7 @@ export default function CareScreen({ route, navigation }) {
     setCombinedLoading(true);
     setCombinedError(null);
     setCombinedResult(null);
+    setCombinedImages([]);
 
     try {
       const res = await fetch(`${BACKEND_BASE_URL}/api/ai/combined-analysis`, {
@@ -199,6 +202,7 @@ export default function CareScreen({ route, navigation }) {
       }
 
       setCombinedResult(json.analysis);
+      setCombinedImages(Array.isArray(json.images) ? json.images : []);
       setReloadKey(prev => prev + 1); // 기록 갱신
     } catch (error) {
       console.error('통합 분석 오류:', error);
@@ -399,6 +403,7 @@ export default function CareScreen({ route, navigation }) {
             {!combinedLoading && !combinedError && combinedResult && (
               <CombinedResultView
                 result={combinedResult}
+                images={combinedImages}
                 onRestart={restartFlow}
                 onOpenRecommendations={handleOpenRecommendations}
                 canOpenRecommendations={canOpenRecommendations}
@@ -425,6 +430,7 @@ function CombinedResultView({
   onOpenRecommendations,
   canOpenRecommendations,
 }) {
+function CombinedResultView({ result, images = [], onRestart }) {
   const {
     summary = '',
     details = '',
@@ -458,6 +464,17 @@ function CombinedResultView({
     ['아랫니', photo.lower],
     ['앞니', photo.front],
   ].filter(([, v]) => v);
+
+  // 분석 결과 사진(충치 표시가 렌더링된 이미지). 없으면 원본으로 대체한다.
+  const POSITION_LABELS = { upper: '윗니', lower: '아랫니', front: '앞니' };
+  const photoCards = (images || [])
+    .map(img => ({
+      key: img.image_type,
+      label: POSITION_LABELS[img.image_type] || img.image_type,
+      url: img.analyzed_image_url || img.original_image_url,
+      isAnalyzed: !!img.analyzed_image_url,
+    }))
+    .filter(c => !!c.url);
 
   return (
     <View>
@@ -499,6 +516,27 @@ function CombinedResultView({
           <Text style={styles.primaryButtonText}>맞춤 구강관리 상품 보기</Text>
         </TouchableOpacity>
       </Section>
+
+      {photoCards.length > 0 && (
+        <Section title="🦷 치아 분석 사진">
+          <Text style={styles.photoHint}>
+            AI가 분석한 부위가 표시된 사진입니다.
+          </Text>
+          {photoCards.map(card => (
+            <View key={card.key} style={styles.photoItem}>
+              <Text style={styles.resultSubLabel}>
+                {card.label}
+                {!card.isAnalyzed && ' (원본)'}
+              </Text>
+              <Image
+                source={{ uri: card.url }}
+                style={styles.analyzedImage}
+                resizeMode="contain"
+              />
+            </View>
+          ))}
+        </Section>
+      )}
 
       {(photoParts.length > 0 || photo.overall) && (
         <Section title="📷 사진 분석 요약">
@@ -648,6 +686,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2563eb',
     marginBottom: 2,
+  },
+  // 치아 분석 사진
+  photoHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 10,
+  },
+  photoItem: {
+    marginBottom: 14,
+  },
+  analyzedImage: {
+    width: '100%',
+    aspectRatio: 4 / 3,
+    borderRadius: 10,
+    backgroundColor: '#e5e7eb',
+    marginTop: 6,
   },
   bulletRow: {
     flexDirection: 'row',
