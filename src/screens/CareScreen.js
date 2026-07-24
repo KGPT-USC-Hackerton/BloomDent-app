@@ -27,7 +27,7 @@ const tabs = [
 // SurveyComponent 등은 `${BACKEND_BASE_URL}/api/...` 형태로 쓰므로 끝의 '/api'는 제거한다.
 const FALLBACK_BACKEND_BASE_URL = (Config.API_BASE_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
 
-export default function CareScreen({ route }) {
+export default function CareScreen({ route, navigation }) {
   // 통합 위저드 단계: intro → survey → photo → result
   const [step, setStep] = useState('intro');
   const [userId, setUserId] = useState(null);
@@ -232,6 +232,22 @@ export default function CareScreen({ route }) {
     setStep('intro');
   };
 
+  // 6B: 맞춤 상품 추천 화면으로 이동.
+  // photoHistoryId(=history_id)가 유효한 비어 있지 않은 문자열일 때만 이동한다.
+  // survey_session_id는 optional. user_id / 의료정보는 전달하지 않는다.
+  const canOpenRecommendations =
+    typeof photoHistoryId === 'string' && photoHistoryId.trim() !== '';
+
+  const handleOpenRecommendations = () => {
+    if (!canOpenRecommendations || !navigation) {
+      return;
+    }
+    navigation.navigate('ProductRecommendation', {
+      history_id: photoHistoryId,
+      survey_session_id: surveySessionId || undefined,
+    });
+  };
+
   const stepIndex = { intro: 0, survey: 0, photo: 1, result: 2 }[step] ?? 0;
 
   return (
@@ -389,6 +405,8 @@ export default function CareScreen({ route }) {
                 result={combinedResult}
                 images={combinedImages}
                 onRestart={restartFlow}
+                onOpenRecommendations={handleOpenRecommendations}
+                canOpenRecommendations={canOpenRecommendations}
               />
             )}
           </View>
@@ -406,6 +424,12 @@ const WIZARD_STEPS = [
 ];
 
 // 통합 분석 결과 렌더링
+function CombinedResultView({
+  result,
+  onRestart,
+  onOpenRecommendations,
+  canOpenRecommendations,
+}) {
 function CombinedResultView({ result, images = [], onRestart }) {
   const {
     summary = '',
@@ -481,6 +505,16 @@ function CombinedResultView({ result, images = [], onRestart }) {
 
       <Section title="🪥 맞춤 추천">
         <BulletList items={recommendations} />
+        <TouchableOpacity
+          style={[
+            styles.primaryButton,
+            { marginTop: 12, opacity: canOpenRecommendations ? 1 : 0.5 },
+          ]}
+          onPress={onOpenRecommendations}
+          disabled={!canOpenRecommendations}
+        >
+          <Text style={styles.primaryButtonText}>맞춤 구강관리 상품 보기</Text>
+        </TouchableOpacity>
       </Section>
 
       {photoCards.length > 0 && (
